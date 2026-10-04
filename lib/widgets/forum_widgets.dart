@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/auth_store.dart';
+import '../data/local_store.dart';
 import '../data/tieba_api.dart';
 import '../pages/login_page.dart';
 
@@ -10,6 +11,19 @@ class ForumAvatar extends StatelessWidget {
   const ForumAvatar({super.key, required this.forum, this.size = 48});
   final Json forum;
   final double size;
+  static final Map<String, Future<String>> _avatars = {};
+  static Future<String> _load(String name) async {
+    final api = TiebaApi();
+    try {
+      final result = await api.forum(name, 1);
+      return httpsImage(object(result.data['forum'])['avatar']);
+    } catch (_) {
+      return '';
+    } finally {
+      api.close();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final url = httpsImage(
@@ -20,44 +34,54 @@ class ForumAvatar extends StatelessWidget {
       height: size,
       child: const Icon(Icons.forum_outlined),
     );
-    return ClipRRect(
+    Widget picture(String source) => ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: url.isEmpty
+      child: source.isEmpty
           ? fallback
           : Image.network(
-              url,
+              source,
               width: size,
               height: size,
               fit: BoxFit.cover,
               errorBuilder: (_, _, _) => fallback,
             ),
     );
+    final name = forumName(forum);
+    if (url.isNotEmpty || name.isEmpty) return picture(url);
+    return FutureBuilder<String>(
+      future: _avatars.putIfAbsent(name, () => _load(name)),
+      builder: (_, snapshot) => picture(snapshot.data ?? ''),
+    );
   }
 }
 
 class SignButton extends StatefulWidget {
-  const SignButton({super.key, required this.name, this.signed = false});
+  const SignButton({
+    super.key,
+    required this.name,
+    this.signed = false,
+    this.followed = true,
+  });
   final String name;
   final bool signed;
+  final bool followed;
   @override
   State<SignButton> createState() => _SignButtonState();
 }
 
 class _SignButtonState extends State<SignButton> {
   bool _busy = false;
-  String? _signedAccount;
   String? _uncertainAccount;
   @override
   void didUpdateWidget(SignButton oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.name != widget.name) {
-      _signedAccount = null;
       _uncertainAccount = null;
     }
   }
 
   Future<void> _sign() async {
-    if (_busy) return;
+    if (_busy || !widget.followed) return;
     final auth = AuthStore.instance;
     if (!auth.isLoggedIn) {
       final logged = await Navigator.of(context)
@@ -70,7 +94,8 @@ class _SignButtonState extends State<SignButton> {
     try {
       final info = await api.signForum(widget.name);
       if (!mounted || auth.bduss != identity) return;
-      setState(() => _signedAccount = identity);
+      await LocalStore.instance.markForumSigned(auth.activeId, widget.name);
+      if (!mounted || auth.bduss != identity) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -80,6 +105,12 @@ class _SignButtonState extends State<SignButton> {
       );
     } catch (e) {
       if (mounted) {
+        if (e is TiebaException &&
+            (e.message.contains('已签到') || e.message.contains('已经签到')) &&
+            auth.bduss == identity) {
+          await LocalStore.instance.markForumSigned(auth.activeId, widget.name);
+          if (!mounted) return;
+        }
         if (e is TiebaException && e.uncertain) {
           setState(() => _uncertainAccount = identity);
         }
@@ -101,14 +132,18 @@ class _SignButtonState extends State<SignButton> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: AuthStore.instance,
+    listenable: Listenable.merge([AuthStore.instance, LocalStore.instance]),
     builder: (context, _) {
       final auth = AuthStore.instance;
       final signed =
-          auth.isLoggedIn && (widget.signed || _signedAccount == auth.bduss);
+          auth.isLoggedIn &&
+          (widget.signed ||
+              LocalStore.instance.forumSigned(auth.activeId, widget.name));
       final uncertain = auth.isLoggedIn && _uncertainAccount == auth.bduss;
       return FilledButton.tonalIcon(
-        onPressed: _busy || signed || uncertain ? null : _sign,
+        onPressed: _busy || signed || uncertain || !widget.followed
+            ? null
+            : _sign,
         icon: _busy
             ? const SizedBox(
                 width: 16,
@@ -123,7 +158,9 @@ class _SignButtonState extends State<SignButton> {
               ? '已签到'
               : uncertain
               ? '请刷新核对'
-              : '签到',
+              : widget.followed
+              ? '签到'
+              : '关注后签到',
         ),
       );
     },

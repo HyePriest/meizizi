@@ -139,15 +139,5 @@ class _ImagePageState extends State<ImagePage> {
         ),
       ),
     ),
-    bottomNavigationBar: const SafeArea(
-      child: Padding(
-        padding: EdgeInsets.all(8),
-        child: Text(
-          '双指缩放 · 拖动查看 · 双击放大或还原',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.white70),
-        ),
-      ),
-    ),
   );
 }

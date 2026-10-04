@@ -5,6 +5,7 @@ import '../data/local_store.dart';
 import '../data/tieba_api.dart';
 import '../widgets/post_widgets.dart';
 import 'login_page.dart';
+import 'preferences_pages.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -80,12 +81,33 @@ class _ProfilePageState extends State<ProfilePage> {
             label: Text(_busy ? '处理中' : '添加账号'),
           ),
           const SizedBox(height: 24),
+          ListTile(
+            leading: const Icon(Icons.history),
+            title: const Text('浏览历史'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const HistoryPage()),
+            ),
+          ),
           Text('内容偏好', style: Theme.of(context).textTheme.titleLarge),
           ListenableBuilder(
             listenable: LocalStore.instance,
             builder: (context, _) => Card(
               child: Column(
                 children: [
+                  ListTile(
+                    leading: const Icon(Icons.filter_alt_outlined),
+                    title: const Text('按吧名关键词屏蔽'),
+                    subtitle: Text(
+                      '${LocalStore.instance.forumKeywords.length} 个关键词',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const KeywordPage(),
+                      ),
+                    ),
+                  ),
                   ListTile(
                     leading: const Icon(Icons.forum_outlined),
                     title: const Text('屏蔽的吧'),
@@ -124,11 +146,11 @@ class _ProfilePageState extends State<ProfilePage> {
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于贴吧'),
-            subtitle: const Text('0.4.0'),
+            subtitle: const Text('0.6.2'),
             onTap: () => showAboutDialog(
               context: context,
               applicationName: '贴吧',
-              applicationVersion: '0.4.0',
+              applicationVersion: '0.6.2',
               children: [const Text('Flutter 第三方贴吧客户端。')],
             ),
           ),

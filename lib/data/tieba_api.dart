@@ -6,12 +6,25 @@ import 'package:http/http.dart' as http;
 
 import 'auth_store.dart';
 import 'models.dart';
+import 'post_protocol.dart';
 export 'models.dart';
 
+class SignSession {
+  SignSession._(this.account, this._token);
+  final String account, _token;
+}
+
 class TiebaApi {
-  final http.Client _client = http.Client();
+  TiebaApi({http.Client? client}) : _client = client ?? http.Client();
+  final http.Client _client;
   final AuthStore _auth = AuthStore.instance;
-  void close() => _client.close();
+  final Map<String, int> _floors = {};
+  final Map<String, TiebaPage> _firstPages = {};
+  bool _closed = false;
+  void close() {
+    _closed = true;
+    _client.close();
+  }
 
   Json _decode(
     http.Response response, {
@@ -145,7 +158,7 @@ class TiebaApi {
             ? '1'
             : category == '热门'
             ? '3'
-            : '6',
+            : '0',
         if (category == '精华') 'is_good': '1',
         if (category == '精华') 'cid': '0',
       });
@@ -211,23 +224,50 @@ class TiebaApi {
     return SearchResult(forums, flag(result.data['has_more']));
   }
 
-  Future<Json> signForum(String name) async {
+  Future<SignSession> prepareSignSession() async {
+    final account = _auth.activeId;
     final token = await _token();
+    if (_auth.activeId != account) throw const TiebaException('账号已切换，签到已停止');
+    return SignSession._(account, token);
+  }
+
+  Future<Json> signForum(String name, {SignSession? session}) async {
+    final credentials = session ?? await prepareSignSession();
+    if (!_auth.isLoggedIn || _auth.activeId != credentials.account) {
+      throw const TiebaException('账号已切换或退出，签到已停止');
+    }
     final result = await _request('/c/c/forum/sign', {
       'kw': name,
-      'tbs': token,
+      'tbs': credentials._token,
       'net_type': '1',
     }, writing: true);
     final info = object(result.data['user_info']);
     if (result.data['error'] is Map || !flag(info['is_sign_in'])) {
+      final message = firstText([
+        object(result.data['error'])['usermsg'],
+      ], '签到未确认，请刷新吧页面查看签到状态');
       throw TiebaException(
-        firstText([
-          object(result.data['error'])['usermsg'],
-        ], '签到未确认，请刷新吧页面查看签到状态'),
+        message,
+        uncertain: !message.contains('已签到') && !message.contains('已经签到'),
       );
     }
     return info;
   }
+
+  Future<void> followForum(String name, String id, {bool undo = false}) async {
+    final account = _auth.activeId;
+    final token = await _token();
+    if (_auth.activeId != account) throw const TiebaException('账号已切换，请重新操作');
+    await _request(undo ? '/c/c/forum/unfavolike' : '/c/c/forum/like', {
+      'kw': name,
+      'forum_name': name,
+      'fid': id,
+      'tbs': token,
+    }, writing: true);
+  }
+
+  Future<Json> forumLevels(String id) async =>
+      (await _request('/c/f/forum/getLevelInfo', {'forum_id': id})).data;
 
   Future<void> agree(
     String threadId, {
@@ -256,19 +296,252 @@ class TiebaApi {
     }, writing: true);
   }
 
-  Future<TiebaPage> thread(String id, int page, {bool onlyAuthor = false}) =>
-      _request('/c/f/pb/page', {
-        'kz': id,
+  Future<TiebaPage> thread(
+    String id,
+    int page, {
+    bool onlyAuthor = false,
+    bool hot = false,
+    void Function(Map<String, int>)? onFloorNumbers,
+  }) async {
+    if (hot) {
+      return _hotPosts(
+        id,
+        page,
+        onlyAuthor: onlyAuthor,
+        onFloorNumbers: onFloorNumbers,
+      );
+    }
+    final result = await _request('/c/f/pb/page', {
+      '_client_version': '12.24.1.0',
+      'kz': id,
+      'pn': '$page',
+      'rn': '20',
+      'with_floor': '1',
+      'floor_rn': '3',
+      'lz': onlyAuthor ? '1' : '0',
+      'r': hot ? '2' : '0',
+    });
+    _rememberFloors(id, result.posts);
+    if (page == 1) _firstPages['${_auth.activeId}:$id:$onlyAuthor'] = result;
+    return result;
+  }
+
+  void _rememberFloors(String tid, List<Json> posts) {
+    for (final post in posts) {
+      if (number(post['floor']) > 0) {
+        _floors['$tid:${post['id']}'] = number(post['floor']);
+      }
+    }
+  }
+
+  Future<TiebaPage> _hotPosts(
+    String id,
+    int page, {
+    required bool onlyAuthor,
+    void Function(Map<String, int>)? onFloorNumbers,
+  }) async {
+    final request =
+        http.MultipartRequest(
+            'POST',
+            Uri.https('c.tieba.baidu.com', '/c/f/pb/page', {'cmd': '302001'}),
+          )
+          ..followRedirects = false
+          ..headers['User-Agent'] = 'bdtb for Android 12.64.1.1'
+          ..headers['x_bd_data_type'] = 'protobuf'
+          ..files.add(
+            http.MultipartFile.fromBytes(
+              'data',
+              encodeHotPosts(
+                id,
+                page,
+                bduss: _auth.bduss,
+                stoken: _auth.stoken,
+                cuid: _auth.deviceId,
+                onlyAuthor: onlyAuthor,
+              ),
+              filename: 'file',
+            ),
+          );
+    final response = await http.Response.fromStream(
+      await _client.send(request).timeout(const Duration(seconds: 25)),
+    ).timeout(const Duration(seconds: 25));
+    if (response.statusCode != 200) {
+      throw TiebaException('服务器返回 ${response.statusCode}，请重试');
+    }
+    Json result;
+    try {
+      result = decodePostResponse(response.bodyBytes);
+    } on FormatException {
+      throw const TiebaException('热度排序返回数据无法识别，请重试');
+    }
+    final error = object(result['error']);
+    if (number(error['errorno']) != 0) {
+      throw TiebaException(firstText([error['errmsg']], '热度排序加载失败'));
+    }
+    if (result['data'] is! Map) throw const TiebaException('热度排序未返回帖子内容');
+    final data = object(result['data']);
+    // JSON retains forum avatar and account-specific metadata; native posts supply the actual hot order.
+    if (page == 1) {
+      final metadata =
+          _firstPages['${_auth.activeId}:$id:$onlyAuthor'] ??
+          await thread(id, 1, onlyAuthor: onlyAuthor);
+      data['forum'] = {
+        ...object(metadata.data['forum']),
+        ...object(data['forum']),
+      };
+      data['thread'] = {
+        ...object(data['thread']),
+        ...object(metadata.data['thread']),
+      };
+      final first = object(data['first_floor_post']);
+      final firstPosts = first.isNotEmpty
+          ? [first]
+          : metadata.posts.where((p) => number(p['floor']) == 1).toList();
+      final posts = objects(data['post_list']);
+      final ids = posts.map((p) => '${p['id']}').toSet();
+      data['post_list'] = [
+        ...firstPosts.where((p) => !ids.contains('${p['id']}')),
+        ...posts,
+      ];
+      data['user_list'] = [
+        ...objects(metadata.data['user_list']),
+        ...objects(data['user_list']),
+      ];
+    }
+    final posts = objects(data['post_list']);
+    _rememberFloors(id, posts);
+    for (final post in posts) {
+      final key = '$id:${post['id']}';
+      post['floor'] = _floors[key];
+      post['floor_pending'] = !_floors.containsKey(key);
+    }
+    data['post_list'] = posts;
+    if (onFloorNumbers == null) {
+      await _resolveFloorNumbers(id, posts);
+      for (final post in posts) {
+        post['floor'] = _floors['$id:${post['id']}'];
+        post['floor_pending'] = false;
+      }
+    } else {
+      // Let the hot list render immediately; only its floor labels update later.
+      unawaited(
+        Future<void>(() async {
+          await _resolveFloorNumbers(id, posts, onFloorNumbers: onFloorNumbers);
+        }),
+      );
+    }
+    return TiebaPage(data);
+  }
+
+  Future<void> _resolveFloorNumbers(
+    String id,
+    List<Json> posts, {
+    void Function(Map<String, int>)? onFloorNumbers,
+  }) async {
+    final pending = posts.map((p) => '${p['id']}').toSet().toList();
+    while (pending.isNotEmpty && !_closed) {
+      pending.removeWhere((pid) => _floors.containsKey('$id:$pid'));
+      final batch = pending.take(4).toList();
+      pending.removeWhere(batch.contains);
+      await Future.wait(
+        batch.map((pid) async {
+          try {
+            final around = await _request('/c/f/pb/page', {
+              '_client_version': '12.24.1.0',
+              'kz': id,
+              'pid': pid,
+              'rn': '30',
+              'r': '0',
+              'with_floor': '1',
+            });
+            _rememberFloors(id, around.posts);
+          } catch (_) {
+            // Missing labels must not hide an otherwise readable hot list.
+          }
+        }),
+      );
+      if (!_closed && onFloorNumbers != null) {
+        onFloorNumbers({
+          for (final post in posts)
+            if (_floors.containsKey('$id:${post['id']}') || pending.isEmpty)
+              '${post['id']}': _floors['$id:${post['id']}'] ?? 0,
+        });
+      }
+    }
+  }
+
+  Future<TiebaPage> floor(String threadId, String postId, int page) =>
+      _request('/c/f/pb/floor', {
+        '_client_version': '12.24.1.0',
+        'kz': threadId,
+        'pid': postId,
         'pn': '$page',
         'rn': '20',
-        'with_floor': '1',
-        'floor_rn': '3',
-        'lz': onlyAuthor ? '1' : '0',
       });
-  Future<TiebaPage> floor(String threadId, String postId, int page) => _request(
-    '/c/f/pb/floor',
-    {'kz': threadId, 'pid': postId, 'pn': '$page', 'rn': '20'},
-  );
+
+  Future<TiebaPage> userProfile(Json user) => _request('/c/u/user/profile', {
+    'uid': '0',
+    'friend_uid': firstText([user['id'], user['user_id']]),
+    'friend_uid_portrait': firstText([user['portrait']]),
+    'is_guest': '1',
+    'has_plist': '1',
+    'need_post_count': '1',
+    'pn': '1',
+    'page': '1',
+  });
+  Future<TiebaPage> userPosts(String uid, int page) =>
+      _request('/c/u/feed/userpost', {
+        'uid': uid,
+        'pn': '$page',
+        'rn': '20',
+        'is_thread': '1',
+        'need_content': '1',
+        'is_view_card': '1',
+        'q_type': '80',
+      });
+
+  Future<SearchResult> userFollows(
+    String uid,
+    int page, {
+    bool fans = false,
+  }) async {
+    final result = await _request(
+      fans ? '/c/u/fans/page' : '/c/u/follow/followList',
+      {'_client_version': '12.24.1.0', 'uid': uid, 'pn': '$page'},
+    );
+    return SearchResult(
+      objects(result.data[fans ? 'user_list' : 'follow_list']),
+      flag(
+        fans
+            ? object(result.data['page'])['has_more']
+            : result.data['has_more'],
+      ),
+    );
+  }
+
+  Future<SearchResult> userForums(String uid, int page) async {
+    final result = await _request('/c/f/forum/like', {
+      '_client_version': '12.24.1.0',
+      'uid': firstText([_auth.user['id']], '0'),
+      'friend_uid': uid,
+      'page_no': '$page',
+      'page_size': '50',
+      'allow_guest': '1',
+      'is_guest': _auth.isLoggedIn ? '0' : '1',
+      'need_member': '1',
+    });
+    final raw = result.data['forum_list'];
+    final nested = object(raw);
+    return SearchResult(
+      raw is List
+          ? objects(raw)
+          : [
+              ...objects(nested['gconforum']),
+              ...objects(nested['non-gconforum']),
+            ],
+      flag(result.data['has_more']),
+    );
+  }
 
   Future<SearchResult> search(
     String word,

@@ -19,7 +19,10 @@ class LikeButton extends StatefulWidget {
   State<LikeButton> createState() => _LikeButtonState();
 }
 
-class _LikeButtonState extends State<LikeButton> {
+class _LikeButtonState extends State<LikeButton>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   bool _busy = false, _liked = false, _uncertain = false;
   int _count = 0;
   @override
@@ -38,7 +41,7 @@ class _LikeButtonState extends State<LikeButton> {
         (flag(agree['has_agree']) ||
             flag(widget.data['has_agree']) ||
             number(agree['agree_type']) == 2);
-    _uncertain = false;
+    _uncertain = flag(widget.data['_agree_uncertain']);
   }
 
   @override
@@ -70,11 +73,22 @@ class _LikeButtonState extends State<LikeButton> {
       setState(() {
         _count = (_count + (_liked ? -1 : 1)).clamp(0, 2147483647);
         _liked = !_liked;
+        // Keep the confirmed result in page-owned data when this lazy row is disposed.
+        widget.data['agree'] = {
+          ...object(widget.data['agree']),
+          'agree_num': _count,
+          'has_agree': _liked ? 1 : 0,
+          'agree_type': _liked ? 2 : 0,
+        };
+        widget.data.remove('_agree_uncertain');
       });
     } catch (e) {
       if (mounted) {
         if (e is TiebaException && e.uncertain) {
-          setState(() => _uncertain = true);
+          setState(() {
+            _uncertain = true;
+            widget.data['_agree_uncertain'] = 1;
+          });
         }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -93,19 +107,22 @@ class _LikeButtonState extends State<LikeButton> {
   }
 
   @override
-  Widget build(BuildContext context) => TextButton.icon(
-    onPressed: _busy || _uncertain ? null : _like,
-    icon: _busy
-        ? const SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
-        : Icon(_liked ? Icons.thumb_up : Icons.thumb_up_outlined, size: 18),
-    label: Text(
-      _uncertain
-          ? '请刷新核对'
-          : '${_liked ? '已赞' : '赞'}${_count > 0 ? ' $_count' : ''}',
-    ),
-  );
+  Widget build(BuildContext context) {
+    super.build(context);
+    return TextButton.icon(
+      onPressed: _busy || _uncertain ? null : _like,
+      icon: _busy
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(_liked ? Icons.thumb_up : Icons.thumb_up_outlined, size: 18),
+      label: Text(
+        _uncertain
+            ? '请刷新核对'
+            : '${_liked ? '已赞' : '赞'}${_count > 0 ? ' $_count' : ''}',
+      ),
+    );
+  }
 }

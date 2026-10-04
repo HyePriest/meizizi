@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/auth_store.dart';
+import '../data/local_store.dart';
 import '../data/tieba_api.dart';
 import 'forum_widgets.dart';
 
@@ -54,52 +55,83 @@ class _BulkSignDialogState extends State<BulkSignDialog> {
         }
       }
       _update(() => _total = forums.length);
+      final pending = <Json>[];
       for (final forum in forums) {
-        if (_cancelled) break;
-        if (AuthStore.instance.activeId != identity) {
-          throw const TiebaException('账号已切换，签到已停止');
-        }
         final name = forumName(forum);
-        _update(() => _status = '正在签到：$name吧');
-        try {
-          await _api.signForum(name);
+        if (flag(forum['is_sign_in']) ||
+            LocalStore.instance.forumSigned(identity, name)) {
+          await LocalStore.instance.markForumSigned(identity, name);
           _update(() {
+            _completed++;
             _success++;
-            _completed++;
-            _results.add('$name吧：签到成功');
+            _results.add('$name吧：今天已签到，已跳过');
           });
-        } on TiebaException catch (e) {
-          final already =
-              e.message.contains('已签到') || e.message.contains('已经签到');
-          _update(() {
-            _completed++;
-            if (already) _success++;
-            _results.add(
-              '$name吧：${e.uncertain ? '结果未确认，请进入吧页面核对' : e.message}',
-            );
-          });
-          if (!already &&
-              (e.uncertain ||
-                  [
-                    '登录',
-                    '验证码',
-                    '验证',
-                    '风控',
-                    '频繁',
-                    '账号',
-                  ].any(e.message.contains))) {
-            _update(() => _status = '签到已停止，请处理错误后再操作');
-            return;
+        } else {
+          pending.add(forum);
+        }
+      }
+      var next = 0;
+      String? stopped;
+      if (!_cancelled && pending.isNotEmpty) {
+        final session = await _api.prepareSignSession();
+        Future<void> worker() async {
+          while (!_cancelled && stopped == null && next < pending.length) {
+            if (AuthStore.instance.activeId != identity) {
+              stopped = '账号已切换，签到已停止';
+              break;
+            }
+            final name = forumName(pending[next++]);
+            _update(() => _status = '正在签到：$name吧');
+            try {
+              await _api.signForum(name, session: session);
+              await LocalStore.instance.markForumSigned(identity, name);
+              _update(() {
+                _success++;
+                _completed++;
+                _results.add('$name吧：签到成功');
+              });
+            } catch (error) {
+              final e = error is TiebaException
+                  ? error
+                  : const TiebaException('签到结果未确认，请核对', uncertain: true);
+              final already =
+                  e.message.contains('已签到') || e.message.contains('已经签到');
+              if (already) {
+                await LocalStore.instance.markForumSigned(identity, name);
+              }
+              _update(() {
+                _completed++;
+                if (already) _success++;
+                _results.add(
+                  '$name吧：${e.uncertain ? '结果未确认，请进入吧页面核对' : e.message}',
+                );
+              });
+              if (!already &&
+                  (e.uncertain ||
+                      [
+                        '登录',
+                        '验证码',
+                        '验证',
+                        '风控',
+                        '频繁',
+                        '账号',
+                      ].any(e.message.contains))) {
+                stopped = '签到已停止：${e.message}';
+              }
+            }
           }
         }
-        if (!_cancelled) await Future<void>.delayed(const Duration(seconds: 1));
+
+        await worker();
       }
       _update(
-        () => _status = _cancelled
-            ? '已停止，未开始的吧未执行签到'
-            : _total == 0
-            ? '没有已关注的吧'
-            : '签到完成',
+        () => _status =
+            stopped ??
+            (_cancelled
+                ? '已停止，未开始的吧未执行签到'
+                : _total == 0
+                ? '没有已关注的吧'
+                : '签到完成'),
       );
     } catch (e) {
       _update(

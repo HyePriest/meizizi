@@ -5,6 +5,8 @@ import '../data/local_store.dart';
 import '../data/tieba_api.dart';
 import '../widgets/forum_widgets.dart';
 import '../widgets/post_widgets.dart';
+import '../widgets/thread_thumbnails.dart';
+import 'user_page.dart';
 import '../widgets/bulk_sign_dialog.dart';
 import 'reading_page.dart';
 import 'search_page.dart';
@@ -20,6 +22,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final _api = TiebaApi();
   final _search = TextEditingController();
+  final _scroll = ScrollController();
   List<Json> _items = [];
   Map<String, Json> _users = {};
   int _tab = 0, _page = 0, _revision = 0;
@@ -30,10 +33,16 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     AuthStore.instance.addListener(_authChanged);
     LocalStore.instance.addListener(_localChanged);
+    _scroll.addListener(_loadNearEnd);
     _load(reset: true);
   }
 
   void _authChanged() {
+    setState(() {
+      _items = [];
+      _users = {};
+      _page = 0;
+    });
     if (_tab != 2) {
       _load(reset: true);
     } else {
@@ -46,7 +55,23 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _localChanged() {
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadNearEnd();
+      });
+    }
+  }
+
+  void _loadNearEnd() {
+    if (_scroll.hasClients &&
+        _scroll.position.extentAfter < 600 &&
+        !_busy &&
+        _hasMore &&
+        _error == null &&
+        _tab != 2) {
+      _load();
+    }
   }
 
   @override
@@ -55,6 +80,7 @@ class _HomePageState extends State<HomePage> {
     LocalStore.instance.removeListener(_localChanged);
     _api.close();
     _search.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -64,12 +90,6 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _busy = true;
       _error = null;
-      if (reset) {
-        _items = [];
-        _users = {};
-        _page = 0;
-        _hasMore = true;
-      }
     });
     try {
       List<Json> incoming;
@@ -98,10 +118,14 @@ class _HomePageState extends State<HomePage> {
             ? flag(result.data['has_more'])
             : result.data.containsKey('page')
             ? result.hasMore
-            : incoming.length >= 20;
+            : result.threads.isNotEmpty;
       }
       if (!mounted || revision != _revision) return;
       setState(() {
+        if (reset) {
+          _items = [];
+          _users = {};
+        }
         final ids = _items
             .map((p) => tab == 1 ? forumName(p) : '${p['id']}')
             .toSet();
@@ -121,15 +145,22 @@ class _HomePageState extends State<HomePage> {
         );
       }
     } finally {
-      if (mounted && revision == _revision) setState(() => _busy = false);
+      if (mounted && revision == _revision) {
+        setState(() => _busy = false);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _loadNearEnd();
+        });
+      }
     }
   }
 
   void _open(String name) {
     if (name.trim().isEmpty) return;
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => ReadingPage(forum: name)));
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => ReadingPage(forum: name)))
+        .then((_) {
+          if (mounted && _tab == 1) _load(reset: true);
+        });
   }
 
   void _openPost(Json item) => Navigator.of(context).push(
@@ -192,7 +223,13 @@ class _HomePageState extends State<HomePage> {
         child: ListTile(
           leading: ForumAvatar(forum: item),
           title: Text('$name吧'),
-          subtitle: Text('等级 ${item['level_id'] ?? item['level'] ?? 0}'),
+          subtitle: ForumLevelBadge(
+            user: {
+              ...item,
+              'level_id': item['level_id'] ?? item['level'],
+              'is_like': 1,
+            },
+          ),
           trailing: SignButton(name: name, signed: flag(item['is_sign_in'])),
           onTap: () => _open(name),
         ),
@@ -209,24 +246,50 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            UserHeader(
-              user: user,
-              subtitle: fullDate(item['create_time'] ?? item['time']),
-            ),
-            if (forum.isNotEmpty)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: () => _open(forum),
-                  icon: const Icon(Icons.forum_outlined, size: 16),
-                  label: Text('$forum吧'),
-                ),
-              )
-            else
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('所属吧信息暂不可用', style: TextStyle(color: Colors.grey)),
+            InkWell(
+              onTap: forum.isEmpty ? null : () => _open(forum),
+              child: Row(
+                children: [
+                  ForumAvatar(
+                    forum: {
+                      ...object(item['forum']),
+                      ...object(item['forum_info']),
+                      'name': forum,
+                      'avatar': firstText([
+                        object(item['forum_info'])['avatar'],
+                        object(item['forum'])['avatar'],
+                        item['forum_avatar'],
+                      ]),
+                    },
+                    size: 42,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          forum.isEmpty ? '所属吧信息暂不可用' : '$forum吧',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        Text(
+                          threadTimeLabel(item),
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => openUser(context, user),
+                icon: UserAvatar(user: user, size: 20),
+                label: Text(author(user)),
+              ),
+            ),
             InkWell(
               onTap: () => _openPost(item),
               child: SizedBox(
@@ -249,6 +312,7 @@ class _HomePageState extends State<HomePage> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                      ThreadThumbnails(thread: item),
                     ],
                   ),
                 ),
@@ -296,6 +360,7 @@ class _HomePageState extends State<HomePage> {
     return RefreshIndicator(
       onRefresh: () => _load(reset: true),
       child: ListView(
+        controller: _scroll,
         key: ValueKey(_tab),
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(12),
