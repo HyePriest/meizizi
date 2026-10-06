@@ -6,14 +6,114 @@ import '../data/tieba_api.dart';
 import '../widgets/post_widgets.dart';
 import 'login_page.dart';
 import 'preferences_pages.dart';
+import 'user_page.dart';
+import 'my_content_page.dart';
 
-class ProfilePage extends StatefulWidget {
+class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
   @override
-  State<ProfilePage> createState() => _ProfilePageState();
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: AuthStore.instance,
+    builder: (context, _) {
+      final auth = AuthStore.instance;
+      void login() =>
+          Navigator.of(context)
+              .push(MaterialPageRoute<void>(builder: (_) => const LoginPage()));
+      void content(MyContent kind) {
+        if (!auth.isLoggedIn) {
+          login();
+          return;
+        }
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => MyContentPage(kind: kind)),
+        );
+      }
+
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: ListTile(
+              contentPadding: const EdgeInsets.all(16),
+              leading: UserAvatar(user: auth.user, size: 52),
+              title: Text(auth.isLoggedIn ? author(auth.user) : '点击登录'),
+              subtitle: Text(auth.isLoggedIn ? '查看我的主页、关注和吧龄' : '登录后查看个人内容'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                if (auth.isLoggedIn) {
+                  openUser(context, auth.user);
+                } else {
+                  login();
+                }
+              },
+            ),
+          ),
+          Card(
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => content(MyContent.threads),
+                    child: const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.article_outlined),
+                        SizedBox(height: 6),
+                        Text('我的发帖'),
+                      ],
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => content(MyContent.replies),
+                    child: const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.reply),
+                        SizedBox(height: 6),
+                        Text('我的回帖'),
+                      ],
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => content(MyContent.saved),
+                    child: const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.bookmark_outline),
+                        SizedBox(height: 6),
+                        Text('我的收藏'),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.history),
+            title: const Text('浏览历史'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const HistoryPage()),
+            ),
+          ),
+        ],
+      );
+    },
+  );
 }
 
-class _ProfilePageState extends State<ProfilePage> {
+class SettingsContent extends StatefulWidget {
+  const SettingsContent({super.key});
+  @override
+  State<SettingsContent> createState() => _SettingsContentState();
+}
+
+class _SettingsContentState extends State<SettingsContent> {
   bool _busy = false;
   Future<void> _action(Future<void> Function() action) async {
     if (_busy) return;
@@ -146,11 +246,11 @@ class _ProfilePageState extends State<ProfilePage> {
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于贴吧'),
-            subtitle: const Text('0.6.2'),
+            subtitle: const Text('0.7.2'),
             onTap: () => showAboutDialog(
               context: context,
               applicationName: '贴吧',
-              applicationVersion: '0.6.2',
+              applicationVersion: '0.7.2',
               children: [const Text('Flutter 第三方贴吧客户端。')],
             ),
           ),

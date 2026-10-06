@@ -7,6 +7,30 @@ import 'models.dart';
 // Unknown fields are skipped so server additions do not affect reading.
 typedef _Field = (String, String, bool);
 const _schemas = <String, Map<int, _Field>>{
+  'floorResponse': {
+    1: ('error', 'error', false),
+    2: ('data', 'floorData', false),
+  },
+  'floorData': {
+    1: ('page', 'page', false),
+    3: ('post', 'post', false),
+    4: ('subpost_list', 'subpost', true),
+    5: ('thread', 'thread', false),
+    6: ('forum', 'forum', false),
+  },
+  'subpost': {
+    1: ('id', 'int', false),
+    2: ('content', 'content', true),
+    3: ('time', 'int', false),
+    4: ('author_id', 'int', false),
+    6: ('floor', 'int', false),
+    7: ('author', 'user', false),
+    9: ('agree', 'agree', false),
+  },
+  'video': {
+    2: ('video_url', 'string', false),
+    6: ('thumbnail_url', 'string', false),
+  },
   'response': {1: ('error', 'error', false), 2: ('data', 'data', false)},
   'error': {1: ('errorno', 'int', false), 2: ('errmsg', 'string', false)},
   'data': {
@@ -35,6 +59,7 @@ const _schemas = <String, Map<int, _Field>>{
     13: ('sub_post_number', 'int', false),
     19: ('author_id', 'int', false),
     23: ('author', 'user', false),
+    29: ('video_info', 'video', false),
     37: ('agree', 'agree', false),
   },
   'user': {
@@ -45,6 +70,7 @@ const _schemas = <String, Map<int, _Field>>{
     23: ('level_id', 'int', false),
     25: ('is_bawu', 'int', false),
     26: ('bawu_type', 'string', false),
+    127: ('ip_address', 'string', false),
   },
   'agree': {
     1: ('agree_num', 'int', false),
@@ -59,6 +85,7 @@ const _schemas = <String, Map<int, _Field>>{
     18: ('author', 'user', false),
     27: ('fid', 'int', false),
     28: ('fname', 'string', false),
+    79: ('video_info', 'video', false),
     126: ('agree', 'agree', false),
   },
   'content': {
@@ -137,6 +164,8 @@ Json _decode(Uint8List bytes, String type) {
       result[field.$1] = value;
     }
   }
+  // Proto3 omits zero values. Preserve the forum's zero level when merging users.
+  if (type == 'user') result.putIfAbsent('level_id', () => 0);
   return result;
 }
 
@@ -170,7 +199,7 @@ Uint8List encodeHotPosts(
 }) {
   final common = [
     ..._int(1, 2),
-    ..._bytes(2, utf8.encode('12.64.1.1')),
+    ..._bytes(2, utf8.encode('22.12.1.0')),
     ..._bytes(7, utf8.encode(cuid)),
     if (bduss.isNotEmpty) ..._bytes(10, utf8.encode(bduss)),
     if (stoken.isNotEmpty) ..._bytes(30, utf8.encode(stoken)),
@@ -190,4 +219,30 @@ Uint8List encodeHotPosts(
     ..._int(75, 2),
   ];
   return Uint8List.fromList(_bytes(1, data));
+}
+
+Json decodeFloorResponse(Uint8List bytes) => _decode(bytes, 'floorResponse');
+Uint8List encodeFloor(
+  String tid,
+  String pid,
+  int page, {
+  required String bduss,
+  required String stoken,
+  required String cuid,
+}) {
+  final common = [
+    ..._int(1, 2),
+    ..._bytes(2, utf8.encode('22.12.1.0')),
+    ..._bytes(7, utf8.encode(cuid)),
+    if (bduss.isNotEmpty) ..._bytes(10, utf8.encode(bduss)),
+    if (stoken.isNotEmpty) ..._bytes(30, utf8.encode(stoken)),
+  ];
+  return Uint8List.fromList(
+    _bytes(1, [
+      ..._int(1, int.parse(tid)),
+      ..._int(2, int.parse(pid)),
+      ..._int(4, page),
+      ..._bytes(9, common),
+    ]),
+  );
 }

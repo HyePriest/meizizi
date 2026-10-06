@@ -29,7 +29,10 @@ class _ImagePageState extends State<ImagePage> {
     setState(() => _saving = true);
     try {
       final response = await _client
-          .send(http.Request('GET', Uri.parse(widget.url)))
+          .send(
+            http.Request('GET', Uri.parse(widget.url))
+              ..headers['Referer'] = 'https://tieba.baidu.com/',
+          )
           .timeout(const Duration(seconds: 25));
       if (response.statusCode != 200) {
         throw Exception('图片下载失败：${response.statusCode}');
@@ -124,6 +127,7 @@ class _ImagePageState extends State<ImagePage> {
             height: constraints.maxHeight,
             child: Image.network(
               widget.url,
+              headers: const {'Referer': 'https://tieba.baidu.com/'},
               fit: BoxFit.contain,
               loadingBuilder: (_, child, progress) => progress == null
                   ? child

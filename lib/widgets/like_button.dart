@@ -122,6 +122,8 @@ class _LikeButtonState extends State<LikeButton>
         _uncertain
             ? '请刷新核对'
             : '${_liked ? '已赞' : '赞'}${_count > 0 ? ' $_count' : ''}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }

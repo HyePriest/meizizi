@@ -312,7 +312,7 @@ class TiebaApi {
       );
     }
     final result = await _request('/c/f/pb/page', {
-      '_client_version': '12.24.1.0',
+      '_client_version': '22.12.1.0',
       'kz': id,
       'pn': '$page',
       'rn': '20',
@@ -346,7 +346,7 @@ class TiebaApi {
             Uri.https('c.tieba.baidu.com', '/c/f/pb/page', {'cmd': '302001'}),
           )
           ..followRedirects = false
-          ..headers['User-Agent'] = 'bdtb for Android 12.64.1.1'
+          ..headers['User-Agent'] = 'bdtb for Android 22.12.1.0'
           ..headers['x_bd_data_type'] = 'protobuf'
           ..files.add(
             http.MultipartFile.fromBytes(
@@ -470,31 +470,72 @@ class TiebaApi {
     }
   }
 
-  Future<TiebaPage> floor(String threadId, String postId, int page) =>
-      _request('/c/f/pb/floor', {
-        '_client_version': '12.24.1.0',
-        'kz': threadId,
-        'pid': postId,
-        'pn': '$page',
+  Future<TiebaPage> floor(String threadId, String postId, int page) async {
+    final request =
+        http.MultipartRequest(
+            'POST',
+            Uri.https('c.tieba.baidu.com', '/c/f/pb/floor', {'cmd': '302002'}),
+          )
+          ..followRedirects = false
+          ..headers['User-Agent'] = 'bdtb for Android 22.12.1.0'
+          ..headers['x_bd_data_type'] = 'protobuf'
+          ..files.add(
+            http.MultipartFile.fromBytes(
+              'data',
+              encodeFloor(
+                threadId,
+                postId,
+                page,
+                bduss: _auth.bduss,
+                stoken: _auth.stoken,
+                cuid: _auth.deviceId,
+              ),
+              filename: 'file',
+            ),
+          );
+    final response = await http.Response.fromStream(
+      await _client.send(request).timeout(const Duration(seconds: 25)),
+    ).timeout(const Duration(seconds: 25));
+    if (response.statusCode != 200) {
+      throw TiebaException('服务器返回 ${response.statusCode}');
+    }
+    final result = decodeFloorResponse(response.bodyBytes);
+    final error = object(result['error']);
+    if (number(error['errorno']) != 0) {
+      throw TiebaException(firstText([error['errmsg']], '楼中楼加载失败'));
+    }
+    if (result['data'] is! Map) throw const TiebaException('楼中楼数据无法识别');
+    return TiebaPage(object(result['data']));
+  }
+
+  Future<TiebaPage> savedThreads(int page) =>
+      _request('/c/f/post/threadstore', {
+        '_client_version': '11.10.8.6',
         'rn': '20',
+        'offset': '${(page - 1) * 20}',
+        'user_id': firstText([_auth.user['id'], _auth.user['user_id']]),
       });
 
   Future<TiebaPage> userProfile(Json user) => _request('/c/u/user/profile', {
-    'uid': '0',
+    '_client_version': '12.64.1.1',
+    'uid': firstText([_auth.user['id'], _auth.user['user_id']], '0'),
     'friend_uid': firstText([user['id'], user['user_id']]),
     'friend_uid_portrait': firstText([user['portrait']]),
-    'is_guest': '1',
+    'is_guest': userKey(user) == userKey(_auth.user) && _auth.isLoggedIn
+        ? '0'
+        : '1',
     'has_plist': '1',
     'need_post_count': '1',
     'pn': '1',
     'page': '1',
   });
-  Future<TiebaPage> userPosts(String uid, int page) =>
+  Future<TiebaPage> userPosts(String uid, int page, {bool replies = false}) =>
       _request('/c/u/feed/userpost', {
         'uid': uid,
         'pn': '$page',
         'rn': '20',
-        'is_thread': '1',
+        '_client_version': replies ? '7.2.0' : '8.2.2',
+        'is_thread': replies ? '0' : '1',
         'need_content': '1',
         'is_view_card': '1',
         'q_type': '80',

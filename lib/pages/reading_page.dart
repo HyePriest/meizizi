@@ -9,6 +9,7 @@ import '../data/local_store.dart';
 import '../widgets/post_widgets.dart';
 import '../widgets/forum_widgets.dart';
 import '../widgets/like_button.dart';
+import '../widgets/post_action_bar.dart';
 import '../widgets/forum_thread_card.dart';
 import 'reply_page.dart';
 import 'login_page.dart';
@@ -396,13 +397,40 @@ class _ReadingPageState extends State<ReadingPage> {
             label: Text(_isFloor ? '回复这一楼' : '写回复'),
           ),
     appBar: AppBar(
-      title: Text(
-        _isForum
-            ? '${widget.forum}吧'
-            : _isFloor
-            ? '楼中楼'
-            : '帖子',
-      ),
+      titleSpacing: 0,
+      title: _isForum || _isFloor
+          ? Text(_isForum ? '${widget.forum}吧' : '楼中楼')
+          : Builder(
+              builder: (context) {
+                final name = firstText([
+                  _forum['name'],
+                  threadForumName(_thread),
+                  widget.forum,
+                ]);
+                return TextButton.icon(
+                  style: TextButton.styleFrom(
+                    backgroundColor: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHighest,
+                    shape: const StadiumBorder(),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                  ),
+                  onPressed: name.isEmpty
+                      ? null
+                      : () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => ReadingPage(forum: name),
+                          ),
+                        ),
+                  icon: ForumAvatar(forum: {..._forum, 'name': name}, size: 24),
+                  label: Text(
+                    name.isEmpty ? '加载中' : '$name吧',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              },
+            ),
       actions: [
         if (!_isForum && !_isFloor)
           FilterChip(
@@ -552,29 +580,11 @@ class _ReadingPageState extends State<ReadingPage> {
                 ),
               );
             }
-            final metadata = _forum;
-            final thread = _thread;
-            final name = firstText([
-              metadata['name'],
-              metadata['forum_name'],
-              threadForumName(thread),
-              widget.forum,
-            ]);
             return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              padding: const EdgeInsets.symmetric(vertical: 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (name.isNotEmpty)
-                    TextButton.icon(
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => ReadingPage(forum: name),
-                        ),
-                      ),
-                      icon: ForumAvatar(forum: metadata, size: 28),
-                      label: Text('$name吧'),
-                    ),
                   Text(
                     _isFloor
                         ? (widget.title ?? '楼中楼回复')
@@ -590,7 +600,10 @@ class _ReadingPageState extends State<ReadingPage> {
             return _footer(context);
           }
           final item = _items[index - 1];
-          final user = _users['${item['author_id']}'] ?? object(item['author']);
+          final user = {
+            ...?_users['${item['author_id']}'],
+            ...object(item['author']),
+          };
           if (_isForum) {
             return ForumThreadCard(
               thread: item,
@@ -602,9 +615,7 @@ class _ReadingPageState extends State<ReadingPage> {
           }
           final isFirstFloor =
               !_isForum && !_isFloor && number(item['floor']) == 1;
-          final openFloor =
-              !_isFloor &&
-                  (!isFirstFloor || number(item['sub_post_number']) > 0)
+          final openFloor = !_isFloor && number(item['sub_post_number']) > 0
               ? () => _openFloor(item)
               : null;
           final card = Card(
@@ -624,6 +635,14 @@ class _ReadingPageState extends State<ReadingPage> {
                         user: user,
                         levelNames: _levelNames,
                         showForumLevel: true,
+                        isOriginalPoster:
+                            isFirstFloor ||
+                            (userKey(user).isNotEmpty &&
+                                userKey(user) ==
+                                    userKey(
+                                      object(_thread['author']),
+                                      _thread,
+                                    )),
                         subtitle: _isForum
                             ? '发布 ${fullDate(item['create_time'])}'
                             : '${_isFloor ? '' : '${number(item['floor']) > 0
@@ -654,39 +673,43 @@ class _ReadingPageState extends State<ReadingPage> {
                         ),
                       ] else ...[
                         PostContent(
-                          parts: contentParts(item['content']),
+                          parts: [
+                            ...contentParts(item['content']),
+                            if (isFirstFloor &&
+                                httpsImage(
+                                  object(_thread['video_info'])['video_url'],
+                                ).isNotEmpty &&
+                                !contentParts(item['content'])
+                                    .any((p) => number(p['type']) == 5))
+                              {
+                                'type': 5,
+                                'video_url': object(
+                                  _thread['video_info'],
+                                )['video_url'],
+                              },
+                          ],
                           onTextTap: openFloor,
                         ),
                         const SizedBox(height: 4),
-                        Wrap(
-                          alignment: WrapAlignment.end,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: 4,
-                          children: [
-                            LikeButton(
-                              key: ValueKey(
-                                'like-$_viewRevision-${item['id']}',
-                              ),
-                              threadId: widget.threadId!,
-                              postId: isFirstFloor ? '0' : '${item['id']}',
-                              comment: _isFloor,
-                              data: isFirstFloor ? _thread : item,
-                            ),
-                            TextButton.icon(
-                              onPressed: _busy || _replyOpening
-                                  ? null
-                                  : () => _reply(item),
-                              icon: const Icon(Icons.reply, size: 18),
-                              label: const Text('回复'),
-                            ),
-                            if (!_isFloor &&
-                                number(item['sub_post_number']) > 0) ...[
-                              TextButton(
-                                onPressed: () => _openFloor(item),
-                                child: Text('楼中楼 ${item['sub_post_number']}'),
-                              ),
-                            ],
-                          ],
+                        PostActionBar(
+                          like: LikeButton(
+                            key: ValueKey('like-$_viewRevision-${item['id']}'),
+                            threadId: widget.threadId!,
+                            postId: isFirstFloor ? '0' : '${item['id']}',
+                            comment: _isFloor,
+                            data: isFirstFloor ? _thread : item,
+                          ),
+                          onReply: _busy || _replyOpening
+                              ? null
+                              : () => _reply(item),
+                          floorCount: !_isFloor
+                              ? number(item['sub_post_number'])
+                              : 0,
+                          onFloor: () => _openFloor(item),
+                          ip: firstText([
+                            user['ip_address'],
+                            item['ip_address'],
+                          ]),
                         ),
                       ],
                     ],

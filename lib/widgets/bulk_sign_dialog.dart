@@ -5,33 +5,51 @@ import '../data/local_store.dart';
 import '../data/tieba_api.dart';
 import 'forum_widgets.dart';
 
-class BulkSignDialog extends StatefulWidget {
-  const BulkSignDialog({super.key});
-  @override
-  State<BulkSignDialog> createState() => _BulkSignDialogState();
-}
-
-class _BulkSignDialogState extends State<BulkSignDialog> {
-  final _api = TiebaApi();
-  bool _running = true, _cancelled = false;
+class BulkSignTask extends ChangeNotifier {
+  BulkSignTask._();
+  static final instance = BulkSignTask._();
+  late TiebaApi _api;
+  bool _running = false,
+      _cancelled = false,
+      _finished = false,
+      _allSigned = false;
+  String _identity = "";
+  bool get finished => _identity == AuthStore.instance.activeId && _finished;
+  bool get allSigned => finished && _allSigned;
   int _total = 0, _completed = 0, _success = 0;
   String _status = '正在读取关注的吧…';
   final List<String> _results = [];
-  @override
-  void initState() {
-    super.initState();
-    _run();
+  bool get running => _running;
+  String get status => _status;
+  int get completed => _completed;
+  int get total => _total;
+  int get success => _success;
+  List<String> get results => List.unmodifiable(_results);
+  void stop() {
+    _cancelled = true;
+    _status = '正在结束当前请求…';
+    notifyListeners();
   }
 
-  @override
-  void dispose() {
-    _cancelled = true;
+  Future<void> start() async {
+    if (_running) return;
+    _api = TiebaApi();
+    _identity = AuthStore.instance.activeId;
+    _finished = false;
+    _allSigned = false;
+    _running = true;
+    _cancelled = false;
+    _total = _completed = _success = 0;
+    _results.clear();
+    _status = '正在读取关注的吧…';
+    notifyListeners();
+    await _run();
     _api.close();
-    super.dispose();
   }
 
   void _update(VoidCallback callback) {
-    if (mounted) setState(callback);
+    callback();
+    notifyListeners();
   }
 
   Future<void> _run() async {
@@ -124,6 +142,11 @@ class _BulkSignDialogState extends State<BulkSignDialog> {
 
         await worker();
       }
+      _allSigned =
+          !_cancelled &&
+          stopped == null &&
+          AuthStore.instance.activeId == identity &&
+          _success == _total;
       _update(
         () => _status =
             stopped ??
@@ -134,63 +157,15 @@ class _BulkSignDialogState extends State<BulkSignDialog> {
                 : '签到完成'),
       );
     } catch (e) {
+      _allSigned = false;
       _update(
         () => _status = e is TiebaException ? e.message : '签到中断，请检查网络后再试',
       );
     } finally {
-      _update(() => _running = false);
+      _update(() {
+        _running = false;
+        _finished = true;
+      });
     }
   }
-
-  @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: !_running,
-    child: AlertDialog(
-      title: const Text('一键签到'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(_status),
-            const SizedBox(height: 12),
-            if (_running)
-              LinearProgressIndicator(
-                value: _total > 0 ? _completed / _total : null,
-              ),
-            const SizedBox(height: 8),
-            Text('已处理 $_completed / $_total · 成功或已签到 $_success'),
-            if (_results.isNotEmpty)
-              SizedBox(
-                height: 220,
-                child: ListView(
-                  children: _results
-                      .map(
-                        (r) => Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Text(r),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: _running
-              ? (_cancelled
-                    ? null
-                    : () => _update(() {
-                        _cancelled = true;
-                        _status = '正在结束当前请求…';
-                      }))
-              : () => Navigator.of(context).pop(),
-          child: Text(_running ? '停止' : '完成'),
-        ),
-      ],
-    ),
-  );
 }

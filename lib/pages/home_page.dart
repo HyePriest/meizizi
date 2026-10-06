@@ -28,6 +28,19 @@ class _HomePageState extends State<HomePage> {
   int _tab = 0, _page = 0, _revision = 0;
   bool _busy = false, _hasMore = true;
   String? _error;
+  final Map<
+    int,
+    ({
+      List<Json> items,
+      Map<String, Json> users,
+      int page,
+      bool more,
+      String? error,
+      double offset,
+    })
+  >
+  _savedTabs = {};
+
   @override
   void initState() {
     super.initState();
@@ -38,6 +51,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _authChanged() {
+    _savedTabs.clear();
     setState(() {
       _items = [];
       _users = {};
@@ -156,11 +170,9 @@ class _HomePageState extends State<HomePage> {
 
   void _open(String name) {
     if (name.trim().isEmpty) return;
-    Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => ReadingPage(forum: name)))
-        .then((_) {
-          if (mounted && _tab == 1) _load(reset: true);
-        });
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => ReadingPage(forum: name)));
   }
 
   void _openPost(Json item) => Navigator.of(context).push(
@@ -187,12 +199,9 @@ class _HomePageState extends State<HomePage> {
           .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
       if (logged != true || !mounted) return;
     }
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const BulkSignDialog(),
-    );
-    if (mounted && _tab == 1) _load(reset: true);
+    final task = BulkSignTask.instance;
+    if (task.running) return;
+    await task.start();
   }
 
   Json _user(Json item) =>
@@ -249,6 +258,7 @@ class _HomePageState extends State<HomePage> {
             InkWell(
               onTap: forum.isEmpty ? null : () => _open(forum),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   ForumAvatar(
                     forum: {
@@ -279,15 +289,21 @@ class _HomePageState extends State<HomePage> {
                       ],
                     ),
                   ),
+                  Flexible(
+                    child: Align(
+                      alignment: Alignment.bottomRight,
+                      child: TextButton.icon(
+                        onPressed: () => openUser(context, user),
+                        icon: UserAvatar(user: user, size: 20),
+                        label: Text(
+                          author(user),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
-              ),
-            ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => openUser(context, user),
-                icon: UserAvatar(user: user, size: 20),
-                label: Text(author(user)),
               ),
             ),
             InkWell(
@@ -388,10 +404,22 @@ class _HomePageState extends State<HomePage> {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
-                FilledButton.tonalIcon(
-                  onPressed: _bulkSign,
-                  icon: const Icon(Icons.event_available),
-                  label: const Text('一键签到'),
+                ListenableBuilder(
+                  listenable: BulkSignTask.instance,
+                  builder: (context, _) {
+                    final task = BulkSignTask.instance;
+                    return FilledButton.tonalIcon(
+                      onPressed: task.running ? null : _bulkSign,
+                      icon: Icon(
+                        task.allSigned ? Icons.check : Icons.event_available,
+                      ),
+                      label: Text(
+                        task.finished
+                            ? (task.allSigned ? '已全部签到' : '没签完')
+                            : '一键签到',
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -449,44 +477,83 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      titleSpacing: 12,
-      title: TextField(
-        controller: _search,
-        textInputAction: TextInputAction.search,
-        onSubmitted: _searchFor,
-        decoration: InputDecoration(
-          hintText: '搜索吧或帖子',
-          prefixIcon: const Icon(Icons.search),
-          filled: true,
-          contentPadding: EdgeInsets.zero,
-          suffixIcon: IconButton(
-            onPressed: () => _searchFor(_search.text),
-            icon: const Icon(Icons.arrow_forward),
+    appBar: _tab == 2
+        ? AppBar(
+            title: const Text('我的'),
+            actions: [
+              IconButton(
+                tooltip: '设置',
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => Scaffold(
+                      appBar: AppBar(title: const Text('设置')),
+                      body: const SettingsContent(),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          )
+        : AppBar(
+            titleSpacing: 12,
+            title: TextField(
+              controller: _search,
+              textInputAction: TextInputAction.search,
+              onSubmitted: _searchFor,
+              decoration: InputDecoration(
+                hintText: '搜索吧或帖子',
+                prefixIcon: const Icon(Icons.search),
+                filled: true,
+                contentPadding: EdgeInsets.zero,
+                suffixIcon: IconButton(
+                  onPressed: () => _searchFor(_search.text),
+                  icon: const Icon(Icons.arrow_forward),
+                ),
+                border: OutlineInputBorder(
+                  borderSide: BorderSide.none,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+              ),
+            ),
           ),
-          border: OutlineInputBorder(
-            borderSide: BorderSide.none,
-            borderRadius: BorderRadius.circular(24),
-          ),
-        ),
-      ),
-    ),
     body: _tab == 2 ? const ProfilePage() : _content(),
     bottomNavigationBar: NavigationBar(
       selectedIndex: _tab,
       onDestinationSelected: (tab) {
         if (_tab == tab) return;
         FocusScope.of(context).unfocus();
+        if (_tab != 2) {
+          _savedTabs[_tab] = (
+            items: List.of(_items),
+            users: Map.of(_users),
+            page: _page,
+            more: _hasMore,
+            error: _error,
+            offset: _scroll.hasClients ? _scroll.offset : 0,
+          );
+        }
+        final saved = _savedTabs[tab];
         setState(() {
           _tab = tab;
           _revision++;
           _busy = false;
-          _items = [];
-          _users = {};
-          _page = 0;
-          _error = null;
+          _items = saved?.items ?? [];
+          _users = saved?.users ?? {};
+          _page = saved?.page ?? 0;
+          _hasMore = saved?.more ?? true;
+          _error = saved?.error;
         });
-        if (tab != 2) _load(reset: true);
+        if (tab != 2) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _scroll.hasClients) {
+              _scroll.jumpTo(
+                (saved?.offset ?? 0).clamp(0, _scroll.position.maxScrollExtent),
+              );
+            }
+          });
+          if (saved == null || saved.page == 0) _load(reset: true);
+        }
       },
       destinations: const [
         NavigationDestination(
@@ -502,7 +569,7 @@ class _HomePageState extends State<HomePage> {
         NavigationDestination(
           icon: Icon(Icons.person_outline),
           selectedIcon: Icon(Icons.person),
-          label: '我',
+          label: '我的',
         ),
       ],
     ),

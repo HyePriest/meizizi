@@ -117,6 +117,10 @@ class _UserPageState extends State<UserPage> {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     Text('主题帖 ${_user['thread_num'] ?? 0}'),
+                    if (firstText([_user['tb_age']]).isNotEmpty)
+                      Text('吧龄 ${_user['tb_age']} 年'),
+                    if (firstText([_user['ip_address']]).isNotEmpty)
+                      Text('IP 属地：${_user['ip_address']}'),
                   ],
                 ),
               ),
