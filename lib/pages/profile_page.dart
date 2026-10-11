@@ -189,6 +189,34 @@ class _SettingsContentState extends State<SettingsContent> {
               MaterialPageRoute<void>(builder: (_) => const HistoryPage()),
             ),
           ),
+          ListenableBuilder(
+            listenable: LocalStore.instance,
+            builder: (context, _) => ListTile(
+              leading: const Icon(Icons.contrast),
+              title: const Text('黑白主题'),
+              trailing: DropdownButton<String>(
+                value: LocalStore.instance.themePreference,
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(value: 'light', child: Text('白色')),
+                  DropdownMenuItem(value: 'dark', child: Text('黑色')),
+                  DropdownMenuItem(value: 'system', child: Text('跟随系统')),
+                ],
+                onChanged: (value) async {
+                  if (value == null) return;
+                  try {
+                    await LocalStore.instance.setTheme(value);
+                  } catch (_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('主题保存失败，请重试')),
+                      );
+                    }
+                  }
+                },
+              ),
+            ),
+          ),
           Text('内容偏好', style: Theme.of(context).textTheme.titleLarge),
           ListenableBuilder(
             listenable: LocalStore.instance,
@@ -223,7 +251,7 @@ class _SettingsContentState extends State<SettingsContent> {
                   ),
                   ListTile(
                     leading: const Icon(Icons.person_off_outlined),
-                    title: const Text('屏蔽的人'),
+                    title: const Text('拉黑的人'),
                     subtitle: Text(
                       '${LocalStore.instance.blockedUsers.length} 人',
                     ),
@@ -239,18 +267,18 @@ class _SettingsContentState extends State<SettingsContent> {
             ),
           ),
           const Text(
-            '屏蔽仅影响本机首页；你仍可以主动搜索和进入对应的吧。',
+            '拉黑在本机隐藏此人的帖子和评论，可在这里解除；吧名屏蔽影响首页。',
             style: TextStyle(color: Colors.grey),
           ),
           const SizedBox(height: 24),
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于贴吧'),
-            subtitle: const Text('0.7.2'),
+            subtitle: const Text('0.8.4'),
             onTap: () => showAboutDialog(
               context: context,
               applicationName: '贴吧',
-              applicationVersion: '0.7.2',
+              applicationVersion: '0.8.4',
               children: [const Text('Flutter 第三方贴吧客户端。')],
             ),
           ),
@@ -265,7 +293,7 @@ class BlockedPage extends StatelessWidget {
   final bool forums;
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(forums ? '屏蔽的吧' : '屏蔽的人')),
+    appBar: AppBar(title: Text(forums ? '屏蔽的吧' : '拉黑的人')),
     body: ListenableBuilder(
       listenable: LocalStore.instance,
       builder: (context, _) {
@@ -281,7 +309,7 @@ class BlockedPage extends StatelessWidget {
             return ListTile(
               title: Text('${entry.value}${forums ? '吧' : ''}'),
               trailing: TextButton(
-                child: const Text('解除屏蔽'),
+                child: Text(forums ? '解除屏蔽' : '解除拉黑'),
                 onPressed: () async {
                   try {
                     await store.unblock(entry.key, forum: forums);

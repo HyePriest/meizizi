@@ -26,16 +26,15 @@ class PostActionBar extends StatelessWidget {
     ),
     child: Row(
       children: [
-        Expanded(flex: 3, child: like),
+        Expanded(flex: 5, child: like),
         Expanded(
           flex: 3,
           child: TextButton.icon(
             onPressed: onReply,
             icon: const Icon(Icons.reply, size: 16),
-            label: const Text(
-              '回复',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            label: const FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text('回复', maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
           ),
         ),
@@ -44,10 +43,13 @@ class PostActionBar extends StatelessWidget {
             flex: 4,
             child: TextButton(
               onPressed: onFloor,
-              child: Text(
-                '楼中楼 $floorCount',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  '楼中楼 $floorCount',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ),
           ),

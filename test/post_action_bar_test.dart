@@ -35,6 +35,11 @@ void main() {
           ),
         );
         expect(tester.takeException(), isNull);
+        final likes = tester.getRect(find.text('123456'));
+        expect(likes.width, greaterThan(20));
+        expect(likes.left, greaterThanOrEqualTo(0));
+        expect(likes.right, lessThanOrEqualTo(width * 5 / 16));
+        expect(tester.widget<Text>(find.text('123456')).overflow, isNull);
         final reply = tester.getRect(find.text('回复'));
         final floor = tester.getRect(find.text('楼中楼 12345'));
         final ip = tester.getRect(find.text('IP：黑龙江省哈尔滨市'));

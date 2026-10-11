@@ -29,7 +29,31 @@ const _schemas = <String, Map<int, _Field>>{
   },
   'video': {
     2: ('video_url', 'string', false),
+    3: ('video_duration', 'int', false),
+    4: ('video_width', 'int', false),
+    5: ('video_height', 'int', false),
     6: ('thumbnail_url', 'string', false),
+  },
+  'pollResponse': {1: ('error', 'error', false)},
+  'poll': {
+    1: ('type', 'int', false),
+    2: ('is_multi', 'int', false),
+    3: ('total_num', 'int', false),
+    4: ('options_count', 'int', false),
+    5: ('is_polled', 'int', false),
+    6: ('polled_value', 'string', false),
+    7: ('tips', 'string', false),
+    8: ('end_time', 'int', false),
+    9: ('options', 'pollOption', true),
+    10: ('status', 'int', false),
+    11: ('total_poll', 'int', false),
+    12: ('title', 'string', false),
+  },
+  'pollOption': {
+    1: ('id', 'int', false),
+    2: ('num', 'int', false),
+    3: ('text', 'string', false),
+    4: ('image', 'string', false),
   },
   'response': {1: ('error', 'error', false), 2: ('data', 'data', false)},
   'error': {1: ('errorno', 'int', false), 2: ('errmsg', 'string', false)},
@@ -57,11 +81,13 @@ const _schemas = <String, Map<int, _Field>>{
     4: ('time', 'int', false),
     5: ('content', 'content', true),
     13: ('sub_post_number', 'int', false),
+    15: ('sub_post_list', 'embeddedReplies', false),
     19: ('author_id', 'int', false),
     23: ('author', 'user', false),
     29: ('video_info', 'video', false),
     37: ('agree', 'agree', false),
   },
+  'embeddedReplies': {2: ('sub_post_list', 'subpost', true)},
   'user': {
     2: ('id', 'int', false),
     3: ('name', 'string', false),
@@ -85,6 +111,7 @@ const _schemas = <String, Map<int, _Field>>{
     18: ('author', 'user', false),
     27: ('fid', 'int', false),
     28: ('fname', 'string', false),
+    74: ('poll_info', 'poll', false),
     79: ('video_info', 'video', false),
     126: ('agree', 'agree', false),
   },
@@ -209,7 +236,7 @@ Uint8List encodeHotPosts(
     ..._int(5, onlyAuthor ? 1 : 0),
     ..._int(6, 2),
     ..._int(8, 1),
-    ..._int(9, 3),
+    ..._int(9, 4),
     ..._int(13, 20),
     ..._int(17, 2),
     ..._int(18, page),
@@ -222,6 +249,34 @@ Uint8List encodeHotPosts(
 }
 
 Json decodeFloorResponse(Uint8List bytes) => _decode(bytes, 'floorResponse');
+Json decodePollResponse(Uint8List bytes) => _decode(bytes, 'pollResponse');
+
+Uint8List encodePoll(
+  String threadId,
+  String forumId,
+  List<int> options, {
+  required String bduss,
+  required String stoken,
+  required String cuid,
+}) {
+  final common = [
+    ..._int(1, 2),
+    ..._bytes(2, utf8.encode('22.12.1.0')),
+    ..._bytes(7, utf8.encode(cuid)),
+    ..._bytes(10, utf8.encode(bduss)),
+    if (stoken.isNotEmpty) ..._bytes(30, utf8.encode(stoken)),
+  ];
+  // AddPoll uses one-based option numbers, encoded as a comma-separated string.
+  return Uint8List.fromList(
+    _bytes(1, [
+      ..._int(1, int.parse(threadId)),
+      ..._bytes(2, utf8.encode(options.join(','))),
+      ..._bytes(3, common),
+      ..._int(4, int.parse(forumId)),
+    ]),
+  );
+}
+
 Uint8List encodeFloor(
   String tid,
   String pid,

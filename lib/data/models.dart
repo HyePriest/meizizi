@@ -69,6 +69,22 @@ String relativeDate(dynamic value, {DateTime? now}) {
 int lastReplyTime(Json thread) => number(
   thread['last_time_int'] ?? thread['last_reply_time'] ?? thread['last_time'],
 );
+
+String commentTime(dynamic value, {DateTime? now}) {
+  final timestamp = number(value);
+  if (timestamp <= 0) return '时间未知';
+  final date = DateTime.fromMillisecondsSinceEpoch(
+    timestamp < 100000000000 ? timestamp * 1000 : timestamp,
+  ).toLocal();
+  final current = now ?? DateTime.now();
+  final elapsed = current.difference(date);
+  if (elapsed.isNegative || elapsed.inMinutes < 1) return '刚刚';
+  if (elapsed.inHours < 1) return '${elapsed.inMinutes}分钟前';
+  if (elapsed.inHours < 24) return '${elapsed.inHours}小时前';
+  String pad(int n) => '$n'.padLeft(2, '0');
+  return '${date.year == current.year ? '' : '${date.year}-'}${pad(date.month)}-${pad(date.day)} ${pad(date.hour)}:${pad(date.minute)}';
+}
+
 String threadTimeLabel(Json thread, {bool latestReply = false}) {
   if (latestReply) {
     final time = lastReplyTime(thread);
@@ -177,6 +193,39 @@ List<Json> threadImages(Json thread) {
     }
   }
   return images;
+}
+
+String videoSource(Json info) => httpsImage(
+  firstText([info['video_url'], info['video_src'], info['link'], info['text']]),
+);
+
+String videoThumbnail(Json info) => httpsImage(
+  firstText([
+    info['thumbnail_url'],
+    info['small_thumbnail_url'],
+    info['first_frame_thumbnail'],
+    info['thumbnail'],
+    info['cover_url'],
+    info['cover'],
+    info['src'],
+    info['cdn_src'],
+  ]),
+);
+
+Json threadVideo(Json thread) {
+  final info = object(thread['video_info']);
+  if (videoSource(info).isNotEmpty || videoThumbnail(info).isNotEmpty) {
+    return info;
+  }
+  for (final part in [
+    ...objects(thread['media']),
+    ...contentParts(thread['rich_abstract']),
+    ...contentParts(thread['abstract']),
+    ...contentParts(thread['content']),
+  ]) {
+    if (number(part['type']) == 5 || part['type'] == 'video') return part;
+  }
+  return {};
 }
 
 String httpsImage(dynamic value) {

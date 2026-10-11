@@ -89,7 +89,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(home: ForumLevelBadge(user: {'level_id': 1})),
       );
-      expect(find.byType(Image), findsOneWidget);
+      expect(find.text('1'), findsOneWidget);
     },
   );
   testWidgets(

@@ -80,6 +80,25 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 val manager = CookieManager.getInstance()
                 when (call.method) {
+                    "shareText" -> {
+                        val text = call.argument<String>("text")
+                        val title = call.argument<String>("title") ?: "贴吧"
+                        if (text.isNullOrBlank() || text.length > 10000) {
+                            result.error("INVALID_SHARE", "分享内容为空或过长", null)
+                        } else {
+                            try {
+                                val send = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, title)
+                                    putExtra(Intent.EXTRA_TEXT, text)
+                                }
+                                startActivity(Intent.createChooser(send, "分享"))
+                                result.success(null)
+                            } catch (_: Exception) {
+                                result.error("SHARE_FAILED", "无法打开系统分享窗口", null)
+                            }
+                        }
+                    }
                     "saveImage" -> {
                         val bytes = call.argument<ByteArray>("bytes")
                         val mime = call.argument<String>("mime")

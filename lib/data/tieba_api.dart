@@ -317,7 +317,8 @@ class TiebaApi {
       'pn': '$page',
       'rn': '20',
       'with_floor': '1',
-      'floor_rn': '3',
+      'floor_rn': '4',
+      'floor_sort_type': '1',
       'lz': onlyAuthor ? '1' : '0',
       'r': hot ? '2' : '0',
     });
@@ -331,6 +332,64 @@ class TiebaApi {
       if (number(post['floor']) > 0) {
         _floors['$tid:${post['id']}'] = number(post['floor']);
       }
+    }
+  }
+
+  Future<void> vote(String threadId, String forumId, List<int> options) async {
+    if (!_auth.isLoggedIn) throw const TiebaException('请先登录再投票');
+    if (number(threadId) <= 0 ||
+        number(forumId) <= 0 ||
+        options.isEmpty ||
+        options.any((id) => id <= 0) ||
+        options.toSet().length != options.length) {
+      throw const TiebaException('投票信息不完整，请刷新帖子后重试');
+    }
+    try {
+      final request =
+          http.MultipartRequest(
+              'POST',
+              Uri.https('tiebac.baidu.com', '/c/c/post/addPollPost', {
+                'cmd': '309006',
+              }),
+            )
+            ..followRedirects = false
+            ..headers['User-Agent'] = 'bdtb for Android 22.12.1.0'
+            ..headers['x_bd_data_type'] = 'protobuf'
+            ..files.add(
+              http.MultipartFile.fromBytes(
+                'data',
+                encodePoll(
+                  threadId,
+                  forumId,
+                  options,
+                  bduss: _auth.bduss,
+                  stoken: _auth.stoken,
+                  cuid: _auth.deviceId,
+                ),
+                filename: 'file',
+              ),
+            );
+      final response = await http.Response.fromStream(
+        await _client.send(request).timeout(const Duration(seconds: 25)),
+      ).timeout(const Duration(seconds: 25));
+      if (response.statusCode != 200) {
+        throw const TiebaException('投票结果未确认，请刷新帖子核对后再操作', uncertain: true);
+      }
+      final result = decodePollResponse(response.bodyBytes);
+      // Require a structured error envelope; HTML/empty replies aren't success.
+      if (result['error'] is! Map) {
+        throw const FormatException('Missing vote acknowledgement');
+      }
+      final error = object(result['error']);
+      if (number(error['errorno']) != 0) {
+        throw TiebaException(firstText([error['errmsg']], '投票失败，请稍后重试'));
+      }
+    } on TimeoutException {
+      throw const TiebaException('投票结果未确认，请刷新帖子核对后再操作', uncertain: true);
+    } on http.ClientException {
+      throw const TiebaException('连接中断，投票结果未确认，请刷新帖子核对', uncertain: true);
+    } on FormatException {
+      throw const TiebaException('投票结果未确认，请刷新帖子核对后再操作', uncertain: true);
     }
   }
 

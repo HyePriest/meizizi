@@ -109,21 +109,33 @@ class _LikeButtonState extends State<LikeButton>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    return TextButton.icon(
-      onPressed: _busy || _uncertain ? null : _like,
-      icon: _busy
-          ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Icon(_liked ? Icons.thumb_up : Icons.thumb_up_outlined, size: 18),
-      label: Text(
-        _uncertain
-            ? '请刷新核对'
-            : '${_liked ? '已赞' : '赞'}${_count > 0 ? ' $_count' : ''}',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+    final label = _uncertain
+        ? '请刷新核对'
+        : (_count > 0 ? '$_count' : (_liked ? '已赞' : '赞'));
+    return Tooltip(
+      message: _uncertain ? label : '${_liked ? '已赞' : '赞'} $_count',
+      child: TextButton(
+        onPressed: _busy || _uncertain ? null : _like,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _busy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      _liked ? Icons.thumb_up : Icons.thumb_up_outlined,
+                      size: 18,
+                    ),
+              const SizedBox(width: 4),
+              Text(label, maxLines: 1, softWrap: false),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -2,12 +2,34 @@ import 'package:flutter/material.dart';
 
 import '../data/models.dart';
 import '../pages/image_page.dart';
+import '../pages/reading_page.dart';
+import 'post_widgets.dart';
 
 class ThreadThumbnails extends StatelessWidget {
   const ThreadThumbnails({super.key, required this.thread});
   final Json thread;
   @override
   Widget build(BuildContext context) {
+    final video = threadVideo(thread);
+    if (video.isNotEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: VideoPreview(
+          info: video,
+          onTap: videoSource(video).isNotEmpty
+              ? null
+              : () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ReadingPage(
+                      threadId: firstText([thread['id'], thread['tid']]),
+                      title: firstText([thread['title']]),
+                      forum: threadForumName(thread),
+                    ),
+                  ),
+                ),
+        ),
+      );
+    }
     final images = threadImages(thread);
     if (images.isEmpty) return const SizedBox.shrink();
     final visible = images.take(3).toList();

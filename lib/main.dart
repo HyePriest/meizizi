@@ -16,24 +16,32 @@ Future<void> main() async {
 class TiebaApp extends StatelessWidget {
   const TiebaApp({super.key});
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: '贴吧',
-    debugShowCheckedModeBanner: false,
-    locale: const Locale('zh', 'CN'),
-    supportedLocales: const [Locale('zh', 'CN')],
-    localizationsDelegates: GlobalMaterialLocalizations.delegates,
-    theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff246BCE)),
-      scaffoldBackgroundColor: const Color(0xffF7F8FA),
-      useMaterial3: true,
-    ),
-    darkTheme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xff246BCE),
-        brightness: Brightness.dark,
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: LocalStore.instance,
+    builder: (context, _) => MaterialApp(
+      themeMode: switch (LocalStore.instance.themePreference) {
+        'light' => ThemeMode.light,
+        'dark' => ThemeMode.dark,
+        _ => ThemeMode.system,
+      },
+      title: '贴吧',
+      debugShowCheckedModeBanner: false,
+      locale: const Locale('zh', 'CN'),
+      supportedLocales: const [Locale('zh', 'CN')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff246BCE)),
+        scaffoldBackgroundColor: const Color(0xffF7F8FA),
+        useMaterial3: true,
       ),
-      useMaterial3: true,
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xff246BCE),
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+      ),
+      home: const HomePage(),
     ),
-    home: const HomePage(),
   );
 }

@@ -117,6 +117,11 @@ class ForumLevelBadge extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final title = firstText([user['level_name'], levelNames[level]]);
+    final color = level <= 3
+        ? const Color(0xff278543)
+        : level <= 9
+        ? const Color(0xff2379c5)
+        : const Color(0xffb65e00);
     final icon = level <= 3
         ? 1
         : level <= 6
@@ -148,16 +153,72 @@ class ForumLevelBadge extends StatelessWidget {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                Image.asset('assets/levels/$icon.gif', fit: BoxFit.contain),
+                if (level >= 10)
+                  Image.asset('assets/levels/$icon.gif', fit: BoxFit.contain)
+                else
+                  ColorFiltered(
+                    // Recolor the original gold art while preserving its alpha and shading.
+                    colorFilter: ColorFilter.matrix(
+                      level <= 3
+                          ? const [
+                              0,
+                              0,
+                              1,
+                              0,
+                              0,
+                              0,
+                              1,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              1,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              1,
+                              0,
+                            ]
+                          : const [
+                              0,
+                              0,
+                              1,
+                              0,
+                              0,
+                              0,
+                              1,
+                              0,
+                              0,
+                              0,
+                              1,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              1,
+                              0,
+                            ],
+                    ),
+                    child: Image.asset(
+                      'assets/levels/$icon.gif',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
                 Padding(
                   padding: EdgeInsets.only(top: icon == 8 ? 5 : 0),
                   child: Text(
                     '$level',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
                       height: 1,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xffb65e00),
+                      color: color,
                     ),
                   ),
                 ),
@@ -220,9 +281,17 @@ String postImageUrl(Json part, {bool original = false}) {
 }
 
 class PostContent extends StatelessWidget {
-  const PostContent({super.key, required this.parts, this.onTextTap});
+  const PostContent({
+    super.key,
+    required this.parts,
+    this.onTextTap,
+    this.videoInfo = const {},
+    this.textStyle,
+  });
   final List<Json> parts;
   final VoidCallback? onTextTap;
+  final Json videoInfo;
+  final TextStyle? textStyle;
   @override
   Widget build(BuildContext context) {
     final widgets = <Widget>[];
@@ -238,7 +307,7 @@ class PostContent extends StatelessWidget {
               width: double.infinity,
               child: Text.rich(
                 TextSpan(children: List.of(spans)),
-                style: const TextStyle(fontSize: 16, height: 1.65),
+                style: textStyle ?? const TextStyle(fontSize: 16, height: 1.6),
               ),
             ),
           ),
@@ -249,25 +318,14 @@ class PostContent extends StatelessWidget {
 
     for (final part in parts) {
       final type = number(part['type']);
-      if (type == 5) {
+      // Type 52 supplies the official client's comment bubble theme, not content.
+      if (type == 52) continue;
+      if (type == 5 || part['type'] == 'video') {
         flush();
-        final url = httpsImage(
-          firstText([part['video_url'], part['link'], part['text']]),
-        );
         widgets.add(
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: FilledButton.tonalIcon(
-              onPressed: url.isEmpty
-                  ? null
-                  : () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => VideoPage(url: url),
-                      ),
-                    ),
-              icon: const Icon(Icons.play_circle_outline),
-              label: Text(url.isEmpty ? '视频地址不可用' : '播放视频'),
-            ),
+            child: VideoPreview(info: {...videoInfo, ...part}),
           ),
         );
       } else if (type == 3 ||
@@ -338,6 +396,15 @@ class PostContent extends StatelessWidget {
       }
     }
     flush();
+    if (!parts.any((p) => number(p['type']) == 5 || p['type'] == 'video') &&
+        videoSource(videoInfo).isNotEmpty) {
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: VideoPreview(info: videoInfo),
+        ),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: widgets,
@@ -353,6 +420,95 @@ class PostContent extends StatelessWidget {
       headers: const {'Referer': 'https://tieba.baidu.com/'},
       errorBuilder: (_, _, _) =>
           const Padding(padding: EdgeInsets.all(24), child: Text('图片加载失败')),
+    );
+  }
+}
+
+class VideoPreview extends StatelessWidget {
+  const VideoPreview({super.key, required this.info, this.onTap});
+  final Json info;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = videoSource(info), cover = videoThumbnail(info);
+    final duration = number(info['video_duration']);
+    return Semantics(
+      label: '视频预览',
+      button: true,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: InkWell(
+            onTap:
+                onTap ??
+                (url.isEmpty
+                    ? null
+                    : () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => VideoPage(url: url),
+                        ),
+                      )),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ColoredBox(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: const Center(child: Text('视频封面暂不可用')),
+                ),
+                if (cover.isNotEmpty)
+                  Image.network(
+                    cover,
+                    fit: BoxFit.cover,
+                    headers: const {'Referer': 'https://tieba.baidu.com/'},
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  ),
+                const Center(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.all(6),
+                      child: Icon(
+                        Icons.play_arrow,
+                        color: Colors.white,
+                        size: 34,
+                      ),
+                    ),
+                  ),
+                ),
+                if (duration > 0)
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
+                        child: Text(
+                          '${duration ~/ 60}:${(duration % 60).toString().padLeft(2, '0')}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

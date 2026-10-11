@@ -14,6 +14,7 @@ class LocalStore extends ChangeNotifier {
   Map<String, String> blockedUsers = {};
   List<String> forumKeywords = [];
   List<Json> history = [];
+  String themePreference = 'system';
   Map<String, String> _signedForums = {};
   static String _signDay(DateTime now) => '${now.year}-${now.month}-${now.day}';
   bool forumSigned(String account, String name, {DateTime? now}) =>
@@ -35,6 +36,10 @@ class LocalStore extends ChangeNotifier {
 
   Future<void> restore() async {
     _prefs = await SharedPreferences.getInstance();
+    final theme = _prefs.getString('theme_mode');
+    themePreference = ['light', 'dark', 'system'].contains(theme)
+        ? theme!
+        : 'system';
     recent = _prefs.getStringList('recent_forums') ?? [];
     forumKeywords = _prefs.getStringList('forum_keywords') ?? [];
     try {
@@ -77,6 +82,16 @@ class LocalStore extends ChangeNotifier {
         (word) =>
             threadForumName(thread).toLowerCase().contains(word.toLowerCase()),
       );
+
+  bool userBlocked(Json user, [Json post = const {}]) =>
+      blockedUsers.containsKey(userKey(user, post));
+
+  Future<void> setTheme(String mode) async {
+    if (!['light', 'dark', 'system'].contains(mode)) return;
+    await _prefs.setString('theme_mode', mode);
+    themePreference = mode;
+    notifyListeners();
+  }
 
   Future<void> visitThread(String id, String title, String forum) async {
     if (id.isEmpty) return;
