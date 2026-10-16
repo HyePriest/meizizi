@@ -1,3 +1,5 @@
+import '../widgets/app_snack_bar.dart';
+
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -70,12 +72,12 @@ class _ImagePageState extends State<ImagePage> {
           });
       if (mounted && saved == true) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('图片已保存')));
+            .showAppSnackBar(const AppSnackBar(content: Text('图片已保存')));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('保存失败：$e')));
+            .showAppSnackBar(AppSnackBar(content: Text('保存失败：$e')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);

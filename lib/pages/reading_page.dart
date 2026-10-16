@@ -1,3 +1,5 @@
+import '../widgets/app_snack_bar.dart';
+
 import 'dart:async';
 import 'dart:io';
 
@@ -13,6 +15,7 @@ import '../widgets/forum_widgets.dart';
 import '../widgets/like_button.dart';
 import '../widgets/forum_thread_card.dart';
 import '../widgets/poll_card.dart';
+import '../widgets/post_action_bar.dart';
 import 'reply_page.dart';
 import 'login_page.dart';
 
@@ -136,8 +139,8 @@ class _ReadingPageState extends State<ReadingPage> {
         if (e is TiebaException && e.uncertain) {
           setState(() => _followUncertain = true);
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+        ScaffoldMessenger.of(context).showAppSnackBar(
+          AppSnackBar(
             content: Text(
               e is TiebaException
                   ? (e.uncertain ? '关注结果未确认，请刷新核对' : e.message)
@@ -199,13 +202,13 @@ class _ReadingPageState extends State<ReadingPage> {
       );
       if (mounted && sent == true) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('回复已发送')));
+            .showAppSnackBar(const AppSnackBar(content: Text('回复已发送')));
         _load(reset: true);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+        ScaffoldMessenger.of(context).showAppSnackBar(
+          AppSnackBar(
             content: Text(e is TiebaException ? e.message : '无法打开回复，请稍后重试'),
           ),
         );
@@ -390,8 +393,9 @@ class _ReadingPageState extends State<ReadingPage> {
             .catchError((_) {});
       }
       if (unsupportedHot) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('该帖暂不支持热度排序，已按楼层显示')));
+        ScaffoldMessenger.of(context).showAppSnackBar(
+          const AppSnackBar(content: Text('该帖暂不支持热度排序，已按楼层显示')),
+        );
       }
       if (reset && !preserveFirst && firstText([_forum['id']]).isNotEmpty) {
         try {
@@ -449,8 +453,9 @@ class _ReadingPageState extends State<ReadingPage> {
       await _shareContent(item).share();
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('无法打开分享，请使用复制链接')));
+        ScaffoldMessenger.of(
+          context,
+        ).showAppSnackBar(const AppSnackBar(content: Text('无法打开分享，请使用复制链接')));
       }
     }
   }
@@ -459,7 +464,7 @@ class _ReadingPageState extends State<ReadingPage> {
     await _shareContent(item).copyLink();
     if (mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('链接已复制')));
+          .showAppSnackBar(const AppSnackBar(content: Text('链接已复制')));
     }
   }
 
@@ -473,8 +478,8 @@ class _ReadingPageState extends State<ReadingPage> {
     try {
       await LocalStore.instance.blockUser(key, author(user));
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+      ScaffoldMessenger.of(context).showAppSnackBar(
+        AppSnackBar(
           content: Text('已拉黑 ${author(user)}，本机隐藏其帖子和评论'),
           action: SnackBarAction(
             label: '撤销',
@@ -485,9 +490,18 @@ class _ReadingPageState extends State<ReadingPage> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('拉黑保存失败，请重试')));
+            .showAppSnackBar(const AppSnackBar(content: Text('拉黑保存失败，请重试')));
       }
     }
+  }
+
+  Future<void> _refreshPoll() async {
+    final account = AuthStore.instance.activeId;
+    final result = await _api.thread(widget.threadId!, 1);
+    if (!mounted || account != AuthStore.instance.activeId) return;
+    final poll = object(object(result.data['thread'])['poll_info']);
+    if (poll.isEmpty) throw const TiebaException('票数暂时不可用，请稍后刷新');
+    setState(() => _thread = {..._thread, 'poll_info': poll});
   }
 
   Widget _commentCard(Json item, {bool parent = false}) {
@@ -511,6 +525,14 @@ class _ReadingPageState extends State<ReadingPage> {
         '',
       );
     }
+    final like = LikeButton(
+      key: ValueKey('like-$_viewRevision-${item['id']}'),
+      threadId: widget.threadId!,
+      postId: isFirstFloor ? '0' : '${item['id']}',
+      comment: nested,
+      iconOnly: isFirstFloor,
+      data: isFirstFloor && _thread['agree'] is Map ? _thread : item,
+    );
     return CommentCard(
       key: ValueKey('post-${item['id']}'),
       user: user,
@@ -548,11 +570,11 @@ class _ReadingPageState extends State<ReadingPage> {
               object(_thread['poll_info']).isNotEmpty)
             PollCard(
               key: ValueKey(
-                'poll-$_viewRevision-${AuthStore.instance.activeId}',
+                'poll-${widget.threadId}-${AuthStore.instance.activeId}',
               ),
               poll: object(_thread['poll_info']),
               hasVoted: _confirmedVotes.contains(AuthStore.instance.activeId),
-              onRefresh: () => _load(reset: true),
+              onRefresh: _refreshPoll,
               onVote: (options) async {
                 final auth = AuthStore.instance;
                 if (!auth.isLoggedIn) {
@@ -567,22 +589,21 @@ class _ReadingPageState extends State<ReadingPage> {
                   firstText([_forum['id'], _thread['fid']]),
                   options,
                 );
+                if (!mounted || auth.activeId != identity) return false;
                 _confirmedVotes.add(identity);
-                if (mounted && auth.activeId == identity) {
-                  unawaited(_load(reset: true));
-                }
                 return true;
               },
             ),
         ],
       ),
-      like: LikeButton(
-        key: ValueKey('like-$_viewRevision-${item['id']}'),
-        threadId: widget.threadId!,
-        postId: isFirstFloor ? '0' : '${item['id']}',
-        comment: nested,
-        data: isFirstFloor && _thread['agree'] is Map ? _thread : item,
-      ),
+      like: isFirstFloor ? null : like,
+      footer: isFirstFloor
+          ? ThreadActionBar(
+              like: like,
+              onReply: _busy || _replyOpening ? null : () => _reply(item),
+              onShare: () => _share(),
+            )
+          : null,
       ip: firstText([user['ip_address'], item['ip_address']]),
       onBlock: userKey(user, item).isEmpty ? null : () => _blockUser(item),
       actions: Align(

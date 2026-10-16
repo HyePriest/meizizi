@@ -16,4 +16,6 @@
 
 本应用是第三方客户端，与百度官方无隶属关系。
 
+0.9.1 的通知接口和表情名称映射另参考 TiebaLite（https://github.com/HuanCheng65/TiebaLite）、Tiebanana（https://github.com/Aobanana-chan/Tiebanana）及百度系优化（https://github.com/WhiteSevs/TamperMonkeyScript）的公开协议资料。私信通过应用内 WebView 使用百度官方页面；版本更新读取本项目 GitHub Releases 的公开信息。
+
 0.6.2 新增的官方等级图标归百度及相关权利人所有，资源链接和等级映射见 assets/levels/README.md。原生帖子协议字段另参考 TiebaLite：https://github.com/zzc10086/TiebaLite 。

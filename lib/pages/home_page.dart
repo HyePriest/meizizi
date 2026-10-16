@@ -1,3 +1,5 @@
+import '../widgets/app_snack_bar.dart';
+
 import 'package:flutter/material.dart';
 
 import '../data/auth_store.dart';
@@ -202,6 +204,10 @@ class _HomePageState extends State<HomePage> {
     final task = BulkSignTask.instance;
     if (task.running) return;
     await task.start();
+    if (mounted && task.finished) {
+      ScaffoldMessenger.of(context)
+          .showAppSnackBar(AppSnackBar(content: Text(task.summary)));
+    }
   }
 
   Json _user(Json item) =>
@@ -215,12 +221,12 @@ class _HomePageState extends State<HomePage> {
       }
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已屏蔽，可在“我”中管理')));
+            .showAppSnackBar(const AppSnackBar(content: Text('已屏蔽，可在“我”中管理')));
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('屏蔽保存失败，请重试')));
+            .showAppSnackBar(const AppSnackBar(content: Text('屏蔽保存失败，请重试')));
       }
     }
   }
@@ -413,15 +419,49 @@ class _HomePageState extends State<HomePage> {
                       icon: Icon(
                         task.allSigned ? Icons.check : Icons.event_available,
                       ),
-                      label: Text(
-                        task.finished
-                            ? (task.allSigned ? '已全部签到' : '没签完')
-                            : '一键签到',
-                      ),
+                      label: Text(task.buttonLabel),
                     );
                   },
                 ),
               ],
+            ),
+            ListenableBuilder(
+              listenable: BulkSignTask.instance,
+              builder: (context, _) {
+                final task = BulkSignTask.instance;
+                if (!task.finished) return const SizedBox.shrink();
+                return Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      builder: (_) => SafeArea(
+                        child: SizedBox(
+                          height: MediaQuery.sizeOf(context).height * .65,
+                          child: ListView(
+                            padding: const EdgeInsets.all(16),
+                            children: [
+                              Text(task.summary),
+                              const Divider(),
+                              for (final result in task.results)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 6,
+                                  ),
+                                  child: Text(result),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    child: Text(
+                      '已签 ${task.success} 个${task.unavailable > 0 ? ' · 跳过 ${task.unavailable} 个' : ''} · 查看结果',
+                    ),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 12),
             if (!AuthStore.instance.isLoggedIn)

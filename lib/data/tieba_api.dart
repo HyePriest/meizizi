@@ -61,7 +61,9 @@ class TiebaApi {
         firstText([
           data['error_msg'],
           data['errmsg'],
-          data['error'],
+          object(data['error'])['usermsg'],
+          object(data['error'])['errmsg'],
+          if (data['error'] is String) data['error'],
         ], '请求失败，请稍后重试'),
       );
     }
@@ -248,7 +250,10 @@ class TiebaApi {
       ], '签到未确认，请刷新吧页面查看签到状态');
       throw TiebaException(
         message,
-        uncertain: !message.contains('已签到') && !message.contains('已经签到'),
+        uncertain:
+            !message.contains('已签到') &&
+            !message.contains('已经签到') &&
+            !unavailableForumMessage(message),
       );
     }
     return info;
@@ -575,6 +580,60 @@ class TiebaApi {
         'user_id': firstText([_auth.user['id'], _auth.user['user_id']]),
       });
 
+  Future<Json> messageCounts() async {
+    if (!_auth.isLoggedIn) throw const TiebaException('请先登录');
+    final account = _auth.activeId;
+    final result = await _request('/c/s/msg', {
+      '_client_version': '12.64.1.1',
+      'bookmark': '1',
+    });
+    if (_auth.activeId != account) throw const TiebaException('账号已切换，请重新加载');
+    return object(result.data['message']);
+  }
+
+  Future<MessageBatch> messages(
+    MessageKind kind,
+    int page, {
+    String cursor = '',
+  }) async {
+    if (!_auth.isLoggedIn) throw const TiebaException('请先登录');
+    final account = _auth.activeId;
+    Json data;
+    if (kind == MessageKind.likes) {
+      final response = await _webGet('/mo/q/smallapp/agreeme', {
+        'rn': '20',
+        'id': cursor,
+      });
+      data = object(response['data']);
+    } else {
+      data = (await _request(
+        '/c/u/feed/${kind == MessageKind.replies ? 'replyme' : 'atme'}',
+        {'_client_version': '12.64.1.1', 'pn': '$page', 'rn': '20'},
+      )).data;
+    }
+    if (_auth.activeId != account) throw const TiebaException('账号已切换，请重新打开消息');
+    final key = switch (kind) {
+      MessageKind.replies => 'reply_list',
+      MessageKind.likes => 'agree_list',
+      MessageKind.mentions => 'at_list',
+    };
+    if (!data.containsKey(key) &&
+        !data.containsKey('page') &&
+        !data.containsKey('has_more')) {
+      throw const TiebaException('消息数据暂不可用，请稍后重试');
+    }
+    final items = objects(data[key]);
+    final next = items.isEmpty ? '' : firstText([items.last['id']]);
+    final more = flag(data['has_more'] ?? object(data['page'])['has_more']);
+    return MessageBatch(
+      items,
+      more &&
+          items.isNotEmpty &&
+          (kind != MessageKind.likes || (next.isNotEmpty && next != cursor)),
+      cursor: next,
+    );
+  }
+
   Future<TiebaPage> userProfile(Json user) => _request('/c/u/user/profile', {
     '_client_version': '12.64.1.1',
     'uid': firstText([_auth.user['id'], _auth.user['user_id']], '0'),
@@ -588,17 +647,42 @@ class TiebaApi {
     'pn': '1',
     'page': '1',
   });
-  Future<TiebaPage> userPosts(String uid, int page, {bool replies = false}) =>
-      _request('/c/u/feed/userpost', {
-        'uid': uid,
-        'pn': '$page',
-        'rn': '20',
-        '_client_version': replies ? '7.2.0' : '8.2.2',
-        'is_thread': replies ? '0' : '1',
-        'need_content': '1',
-        'is_view_card': '1',
-        'q_type': '80',
-      });
+  Future<TiebaPage> userPosts(
+    String uid,
+    int page, {
+    bool replies = false,
+  }) async {
+    final result = await _request('/c/u/feed/userpost', {
+      'uid': uid,
+      'pn': '$page',
+      'rn': '20',
+      '_client_version': replies ? '7.2.0' : '8.2.2',
+      'is_thread': replies ? '0' : '1',
+      'need_content': '1',
+      'is_view_card': '1',
+      'q_type': '80',
+    });
+    if (!replies) return result;
+    // Reply history groups a user's own replies by thread. Each group carries
+    // post_content; treating the group itself as a content part loses the text.
+    final posts = <Json>[];
+    for (final item in objects(result.data['post_list'])) {
+      final groups = objects(item['content']);
+      if (groups.any((group) => group.containsKey('post_content'))) {
+        for (final group in groups) {
+          posts.add({
+            ...item,
+            'content': group['post_content'],
+            'post_id': group['post_id'] ?? item['post_id'],
+            'create_time': group['create_time'] ?? item['create_time'],
+          });
+        }
+      } else {
+        posts.add(item);
+      }
+    }
+    return TiebaPage({...result.data, 'post_list': posts});
+  }
 
   Future<SearchResult> userFollows(
     String uid,

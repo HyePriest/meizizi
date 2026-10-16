@@ -1,6 +1,9 @@
+import '../widgets/app_snack_bar.dart';
+
 import 'package:flutter/material.dart';
 
 import '../data/auth_store.dart';
+import '../data/app_update.dart';
 import '../data/local_store.dart';
 import '../data/tieba_api.dart';
 import '../widgets/post_widgets.dart';
@@ -8,6 +11,9 @@ import 'login_page.dart';
 import 'preferences_pages.dart';
 import 'user_page.dart';
 import 'my_content_page.dart';
+import 'messages_page.dart';
+import 'private_messages_page.dart';
+import 'update_page.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -93,6 +99,52 @@ class ProfilePage extends StatelessWidget {
               ],
             ),
           ),
+          const MessageEntry(),
+          ListTile(
+            leading: const Icon(Icons.mail_outline),
+            title: const Text('私信'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              if (!auth.isLoggedIn) {
+                await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(builder: (_) => const LoginPage()),
+                );
+              }
+              if (!context.mounted || !auth.isLoggedIn) return;
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const PrivateMessagesPage(),
+                ),
+              );
+            },
+          ),
+          ListenableBuilder(
+            listenable: AppUpdate.instance,
+            builder: (context, _) {
+              final update = AppUpdate.instance;
+              if (!update.available) return const SizedBox.shrink();
+              return Card(
+                child: ListTile(
+                  leading: Icon(
+                    Icons.system_update,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  title: Text('发现新版本 ${update.latest}'),
+                  subtitle: Text(
+                    update.downloading
+                        ? '正在下载，可继续浏览'
+                        : update.readyToInstall
+                        ? '更新已下载，点击安装'
+                        : '点击查看更新内容',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const UpdatePage()),
+                  ),
+                ),
+              );
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.history),
             title: const Text('浏览历史'),
@@ -113,6 +165,84 @@ class SettingsContent extends StatefulWidget {
   State<SettingsContent> createState() => _SettingsContentState();
 }
 
+class MessageEntry extends StatefulWidget {
+  const MessageEntry({super.key});
+  @override
+  State<MessageEntry> createState() => _MessageEntryState();
+}
+
+class _MessageEntryState extends State<MessageEntry>
+    with WidgetsBindingObserver {
+  final _api = TiebaApi();
+  int _count = 0, _revision = 0;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    AuthStore.instance.addListener(_refresh);
+    AppUpdate.instance.check();
+    _refresh();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refresh();
+      AppUpdate.instance.check();
+    }
+  }
+
+  Future<void> _refresh() async {
+    final revision = ++_revision;
+    final account = AuthStore.instance.activeId;
+    if (mounted) setState(() => _count = 0);
+    if (!AuthStore.instance.isLoggedIn) return;
+    try {
+      final counts = await _api.messageCounts();
+      if (mounted &&
+          revision == _revision &&
+          account == AuthStore.instance.activeId) {
+        setState(
+          () => _count =
+              number(counts['replyme']) +
+              number(counts['atme']) +
+              number(counts['agreeme'] ?? counts['agree']),
+        );
+      }
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    AuthStore.instance.removeListener(_refresh);
+    _api.close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    leading: Badge.count(
+      count: _count,
+      isLabelVisible: _count > 0,
+      child: const Icon(Icons.notifications_outlined),
+    ),
+    title: const Text('通知'),
+    subtitle: const Text('回复我的 · 收到的赞 · @我的'),
+    trailing: const Icon(Icons.chevron_right),
+    onTap: () async {
+      if (!AuthStore.instance.isLoggedIn) {
+        await Navigator.of(context)
+            .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
+      }
+      if (!context.mounted || !AuthStore.instance.isLoggedIn) return;
+      await Navigator.of(context)
+          .push(MaterialPageRoute<void>(builder: (_) => const MessagesPage()));
+      if (mounted) _refresh();
+    },
+  );
+}
+
 class _SettingsContentState extends State<SettingsContent> {
   bool _busy = false;
   Future<void> _action(Future<void> Function() action) async {
@@ -122,8 +252,8 @@ class _SettingsContentState extends State<SettingsContent> {
       await action();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+        ScaffoldMessenger.of(context).showAppSnackBar(
+          AppSnackBar(
             content: Text(e is TiebaException ? e.message : '账号操作失败，请重试'),
           ),
         );
@@ -181,6 +311,22 @@ class _SettingsContentState extends State<SettingsContent> {
             label: Text(_busy ? '处理中' : '添加账号'),
           ),
           const SizedBox(height: 24),
+          ListenableBuilder(
+            listenable: AppUpdate.instance,
+            builder: (context, _) => ListTile(
+              leading: const Icon(Icons.system_update),
+              title: const Text('版本更新'),
+              subtitle: Text(
+                AppUpdate.instance.available
+                    ? '发现新版本 ${AppUpdate.instance.latest}'
+                    : '当前版本 ${AppUpdate.version}',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const UpdatePage()),
+              ),
+            ),
+          ),
           ListTile(
             leading: const Icon(Icons.history),
             title: const Text('浏览历史'),
@@ -208,8 +354,8 @@ class _SettingsContentState extends State<SettingsContent> {
                     await LocalStore.instance.setTheme(value);
                   } catch (_) {
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('主题保存失败，请重试')),
+                      ScaffoldMessenger.of(context).showAppSnackBar(
+                        const AppSnackBar(content: Text('主题保存失败，请重试')),
                       );
                     }
                   }
@@ -274,11 +420,11 @@ class _SettingsContentState extends State<SettingsContent> {
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于贴吧'),
-            subtitle: const Text('0.8.4'),
+            subtitle: const Text(AppUpdate.version),
             onTap: () => showAboutDialog(
               context: context,
               applicationName: '贴吧',
-              applicationVersion: '0.8.4',
+              applicationVersion: AppUpdate.version,
               children: [const Text('Flutter 第三方贴吧客户端。')],
             ),
           ),
@@ -315,9 +461,9 @@ class BlockedPage extends StatelessWidget {
                     await store.unblock(entry.key, forum: forums);
                   } catch (_) {
                     if (context.mounted) {
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(const SnackBar(content: Text('保存失败，请重试')));
+                      ScaffoldMessenger.of(context).showAppSnackBar(
+                        const AppSnackBar(content: Text('保存失败，请重试')),
+                      );
                     }
                   }
                 },

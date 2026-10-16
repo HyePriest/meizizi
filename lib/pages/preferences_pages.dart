@@ -1,3 +1,5 @@
+import '../widgets/app_snack_bar.dart';
+
 import 'package:flutter/material.dart';
 
 import '../data/local_store.dart';
@@ -117,7 +119,7 @@ class _KeywordPageState extends State<KeywordPage> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('保存失败，请重试')));
+            .showAppSnackBar(const AppSnackBar(content: Text('保存失败，请重试')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -173,9 +175,9 @@ class _KeywordPageState extends State<KeywordPage> {
                     await LocalStore.instance.removeForumKeyword(word);
                   } catch (_) {
                     if (context.mounted) {
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(const SnackBar(content: Text('保存失败，请重试')));
+                      ScaffoldMessenger.of(context).showAppSnackBar(
+                        const AppSnackBar(content: Text('保存失败，请重试')),
+                      );
                     }
                   }
                 },

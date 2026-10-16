@@ -1,7 +1,19 @@
 import 'package:html/parser.dart' as html;
 import 'package:html/dom.dart' as dom;
 
+import 'emoji.dart';
+
 typedef Json = Map<String, dynamic>;
+
+enum MessageKind { replies, likes, mentions }
+
+class MessageBatch {
+  const MessageBatch(this.items, this.hasMore, {this.cursor = ''});
+  final List<Json> items;
+  final bool hasMore;
+  final String cursor;
+}
+
 Json object(dynamic value) =>
     value is Map ? Map<String, dynamic>.from(value) : {};
 List<Json> objects(dynamic value) =>
@@ -97,33 +109,47 @@ List<Json> contentParts(dynamic content) {
   if (content is List) {
     return objects(content)
         .expand(
-          (part) =>
-              number(part['type']) == 0 &&
-                  RegExp(
-                    r'<(?:img|br)\b',
-                    caseSensitive: false,
-                  ).hasMatch('${part['text'] ?? ''}')
+          (part) => part.containsKey('post_content')
+              ? contentParts(part['post_content'])
+              : number(part['type']) == 0 &&
+                    RegExp(
+                      r'<(?:img|br)\b',
+                      caseSensitive: false,
+                    ).hasMatch('${part['text'] ?? ''}')
               ? contentParts(part['text'])
+              : number(part['type']) == 0 && part['text'] is String
+              ? expandTextEmoji(part['text'] as String)
               : [part],
         )
         .toList();
   }
   if (content is Map) {
-    return contentParts(content['content'] ?? content['list']);
+    return contentParts(
+      content['post_content'] ?? content['content'] ?? content['list'],
+    );
   }
   if (content is! String || content.isEmpty) return [];
   final fragment = html.parseFragment(content);
   final parts = <Json>[];
   void visit(dom.Node node) {
     if (node is dom.Text) {
-      if (node.text.isNotEmpty) parts.add({'type': 0, 'text': node.text});
+      if (node.text.isNotEmpty) parts.addAll(expandTextEmoji(node.text));
     } else if (node is dom.Element && node.localName == 'img') {
       final src = firstText([
         node.attributes['data-original'],
         node.attributes['data-src'],
         node.attributes['src'],
       ]);
-      parts.add({'type': src.contains('emoticon') ? 2 : 3, 'src': src});
+      final label = firstText([
+        node.attributes['alt'],
+        node.attributes['title'],
+      ]);
+      final emoticon =
+          src.contains('emoticon') ||
+          src.contains('/face/') ||
+          node.classes.contains('BDE_Smiley') ||
+          label.startsWith('#(');
+      parts.add({'type': emoticon ? 2 : 3, 'src': src, 'c': label});
     } else if (node is dom.Element && node.localName == 'br') {
       parts.add({'type': 0, 'text': '\n'});
     } else {
@@ -156,6 +182,8 @@ List<Json> threadImages(Json thread) {
     else ...[
       ...pictures(thread['image_list']),
       ...pictures(thread['pic_list']),
+      ...pictures(thread['pic_info']),
+      ...contentParts(thread['rich_abstract']),
       ...contentParts(thread['abstract']),
       ...contentParts(thread['content']),
     ],
@@ -261,6 +289,11 @@ class TiebaException implements Exception {
   @override
   String toString() => message;
 }
+
+bool unavailableForumMessage(String message) =>
+    RegExp(r'本吧|该吧|此吧|这个吧|贴吧|吧已|吧被|吧不存在').hasMatch(message) &&
+    RegExp(r'封禁|被封|封了|不存在|已关闭|已删除|暂停开放|暂不开放|停止服务|无法访问|已屏蔽').hasMatch(message) &&
+    !RegExp(r'账号|帐号|用户被|您被|你被').hasMatch(message);
 
 class TiebaPage {
   TiebaPage(this.data);

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/auth_store.dart';
 import '../data/tieba_api.dart';
 import '../widgets/post_widgets.dart';
+import '../widgets/thread_thumbnails.dart';
 import 'reading_page.dart';
 
 enum MyContent { threads, replies, saved }
@@ -26,6 +27,20 @@ class _MyContentPageState extends State<MyContentPage> {
     MyContent.replies => '我的回帖',
     MyContent.saved => '我的收藏',
   };
+  String _threadTitle(Json item) {
+    final title = plainText(
+      firstText([
+        item['thread_title'],
+        object(item['thread'])['title'],
+        item['title'],
+      ]),
+    ).trim();
+    final cleaned = widget.kind == MyContent.replies
+        ? title.replaceFirst(RegExp(r'^(?:(?:回复帖子|回复)\s*[:：]\s*)+'), '').trim()
+        : title;
+    return cleaned.isEmpty ? '查看帖子' : cleaned;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -105,21 +120,8 @@ class _MyContentPageState extends State<MyContentPage> {
         children: [
           for (final item in _items)
             Card(
-              child: ListTile(
-                title: Text(
-                  firstText([
-                    item['title'],
-                    object(item['thread'])['title'],
-                  ], '查看帖子'),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('${threadForumName(item)}吧'),
-                    if (widget.kind == MyContent.replies)
-                      PostContent(parts: contentParts(item['content'])),
-                  ],
-                ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
                 onTap: () {
                   final tid = firstText([
                     item['thread_id'],
@@ -132,13 +134,70 @@ class _MyContentPageState extends State<MyContentPage> {
                       MaterialPageRoute<void>(
                         builder: (_) => ReadingPage(
                           threadId: tid,
-                          title: firstText([item['title']]),
+                          title: _threadTitle(item),
                           forum: threadForumName(item),
                         ),
                       ),
                     );
                   }
                 },
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (widget.kind == MyContent.replies) ...[
+                        if (contentParts(item['content']).isNotEmpty)
+                          PostContent(parts: contentParts(item['content']))
+                        else
+                          Text(
+                            flag(item['is_post_deleted'])
+                                ? '这条回帖已删除'
+                                : '这条回帖的正文暂不可用',
+                          ),
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerLow,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            _threadTitle(item),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      ] else ...[
+                        Text(
+                          firstText([
+                            item['title'],
+                            object(item['thread'])['title'],
+                          ], '查看帖子'),
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        if (widget.kind == MyContent.threads)
+                          ThreadThumbnails(
+                            thread: {...object(item['thread']), ...item},
+                          ),
+                      ],
+                      const SizedBox(height: 8),
+                      Text(
+                        [
+                          if (threadForumName(item).isNotEmpty)
+                            '${threadForumName(item)}吧',
+                          if (number(item['create_time'] ?? item['time']) > 0)
+                            commentTime(item['create_time'] ?? item['time']),
+                        ].join(' · '),
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           if (_error != null)

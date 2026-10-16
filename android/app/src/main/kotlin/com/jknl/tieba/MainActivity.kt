@@ -13,6 +13,108 @@ import android.app.Activity
 class MainActivity : FlutterActivity() {
     private var pendingSave: MethodChannel.Result? = null
     private var pendingBytes: ByteArray? = null
+    private var updateRunning = false
+
+    private fun downloadUpdate(url: String, result: MethodChannel.Result) {
+        val source = android.net.Uri.parse(url)
+        if (source.scheme != "https" || source.host != "github.com" ||
+            !source.path.orEmpty().startsWith("/HyePriest/tieba/releases/download/") ||
+            !source.path.orEmpty().endsWith(".apk")) {
+            result.error("INVALID_UPDATE", "更新地址无效", null); return
+        }
+        if (updateRunning) { result.error("BUSY", "正在下载更新", null); return }
+        updateRunning = true
+        Thread {
+            val directory = java.io.File(cacheDir, "updates").apply { mkdirs() }
+            val file = java.io.File(directory, "tieba-update.apk")
+            val partial = java.io.File(directory, "tieba-update.partial.apk")
+            try {
+                var target = java.net.URL(url)
+                var downloaded = false
+                for (redirect in 0..6) {
+                    if (target.protocol != "https" || target.host !in setOf(
+                            "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")) {
+                        throw java.io.IOException("更新地址跳转异常")
+                    }
+                    val connection = target.openConnection() as java.net.HttpURLConnection
+                    connection.instanceFollowRedirects = false
+                    connection.connectTimeout = 15000
+                    connection.readTimeout = 30000
+                    connection.setRequestProperty("User-Agent", "Tieba-Android")
+                    try {
+                        val code = connection.responseCode
+                        if (code in listOf(301, 302, 303, 307, 308)) {
+                            val location = connection.getHeaderField("Location")
+                                ?: throw java.io.IOException("无效跳转")
+                            target = java.net.URL(target, location)
+                            continue
+                        }
+                        if (code != 200) throw java.io.IOException("下载失败")
+                        var size = 0L
+                        connection.inputStream.use { input ->
+                            partial.outputStream().use { output ->
+                                val buffer = ByteArray(32768)
+                                while (true) {
+                                    val count = input.read(buffer)
+                                    if (count < 0) break
+                                    size += count
+                                    if (size > 100L * 1024 * 1024) throw java.io.IOException("安装包过大")
+                                    output.write(buffer, 0, count)
+                                }
+                            }
+                        }
+                        val expected = connection.contentLengthLong
+                        if (size == 0L || (expected > 0 && expected != size)) throw java.io.IOException("下载未完成")
+                        downloaded = true
+                        break
+                    } finally { connection.disconnect() }
+                }
+                if (!downloaded) throw java.io.IOException("下载跳转过多")
+                val info = packageManager.getPackageArchiveInfo(partial.absolutePath, 0)
+                    ?: throw java.io.IOException("安装包无效")
+                val installed = packageManager.getPackageInfo(packageName, 0)
+                val version = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+                val current = if (Build.VERSION.SDK_INT >= 28) installed.longVersionCode else installed.versionCode.toLong()
+                if (info.packageName != packageName || version <= current) throw java.io.IOException("安装包版本不匹配")
+                file.delete()
+                if (!partial.renameTo(file)) throw java.io.IOException("无法保存安装包")
+                runOnUiThread {
+                    updateRunning = false
+                    // Download completion never opens a window over the reader.
+                    result.success("ready")
+                }
+            } catch (_: Exception) {
+                partial.delete()
+                runOnUiThread {
+                    updateRunning = false
+                    result.error("DOWNLOAD_FAILED", "更新下载未完成，请重试", null)
+                }
+            }
+        }.start()
+    }
+
+    private fun installUpdate(result: MethodChannel.Result) {
+        val file = java.io.File(cacheDir, "updates/tieba-update.apk")
+        if (!file.isFile || updateRunning) {
+            result.error("MISSING_UPDATE", "请先下载更新", null); return
+        }
+        if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+            try {
+                startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    android.net.Uri.parse("package:$packageName")))
+                result.success("permission")
+            } catch (_: Exception) { result.error("PERMISSION", "无法打开安装权限设置", null) }
+            return
+        }
+        try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.updates", file)
+            startActivity(Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            })
+            result.success("installer")
+        } catch (_: Exception) { result.error("INSTALL_FAILED", "无法打开安装程序", null) }
+    }
 
     private fun saveImage(bytes: ByteArray, name: String, mime: String, result: MethodChannel.Result) {
         if (Build.VERSION.SDK_INT >= 29) {
@@ -80,6 +182,8 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 val manager = CookieManager.getInstance()
                 when (call.method) {
+                    "downloadUpdate" -> downloadUpdate(call.argument<String>("url") ?: "", result)
+                    "installUpdate" -> installUpdate(result)
                     "shareText" -> {
                         val text = call.argument<String>("text")
                         val title = call.argument<String>("title") ?: "贴吧"

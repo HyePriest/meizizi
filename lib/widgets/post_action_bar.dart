@@ -1,5 +1,60 @@
 import 'package:flutter/material.dart';
 
+class ThreadActionBar extends StatelessWidget {
+  const ThreadActionBar({
+    super.key,
+    required this.like,
+    required this.onReply,
+    required this.onShare,
+  });
+  final Widget like;
+  final VoidCallback? onReply;
+  final VoidCallback onShare;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final style = TextButton.styleFrom(
+      backgroundColor: colors.surfaceContainerLow,
+      foregroundColor: colors.onSurfaceVariant,
+      minimumSize: const Size(0, 42),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: TextButtonTheme(
+        data: TextButtonThemeData(style: style),
+        child: Row(
+          children: [
+            Expanded(child: like),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Tooltip(
+                message: '回复',
+                child: TextButton(
+                  onPressed: onReply,
+                  child: const Icon(Icons.chat_bubble_outline, size: 20),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Tooltip(
+                message: '分享',
+                child: TextButton(
+                  onPressed: onShare,
+                  child: const Icon(Icons.share_outlined, size: 20),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class PostActionBar extends StatelessWidget {
   const PostActionBar({
     super.key,

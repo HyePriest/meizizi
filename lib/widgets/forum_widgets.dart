@@ -1,3 +1,5 @@
+import 'app_snack_bar.dart';
+
 import 'package:flutter/material.dart';
 
 import '../data/auth_store.dart';
@@ -96,8 +98,8 @@ class _SignButtonState extends State<SignButton> {
       if (!mounted || auth.bduss != identity) return;
       await LocalStore.instance.markForumSigned(auth.activeId, widget.name);
       if (!mounted || auth.bduss != identity) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+      ScaffoldMessenger.of(context).showAppSnackBar(
+        AppSnackBar(
           content: Text(
             '签到成功 · 连续 ${info['cont_sign_num'] ?? info['sign_day_count'] ?? 1} 天 · 经验 +${info['sign_bonus_point'] ?? 0}',
           ),
@@ -114,8 +116,8 @@ class _SignButtonState extends State<SignButton> {
         if (e is TiebaException && e.uncertain) {
           setState(() => _uncertainAccount = identity);
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+        ScaffoldMessenger.of(context).showAppSnackBar(
+          AppSnackBar(
             content: Text(
               e is TiebaException
                   ? (e.uncertain ? '签到结果未确认，请刷新吧页面核对后再操作' : e.message)

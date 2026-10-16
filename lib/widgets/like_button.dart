@@ -1,3 +1,5 @@
+import 'app_snack_bar.dart';
+
 import 'package:flutter/material.dart';
 
 import '../data/auth_store.dart';
@@ -11,10 +13,12 @@ class LikeButton extends StatefulWidget {
     required this.data,
     this.postId = '0',
     this.comment = false,
+    this.iconOnly = false,
   });
   final String threadId, postId;
   final Json data;
   final bool comment;
+  final bool iconOnly;
   @override
   State<LikeButton> createState() => _LikeButtonState();
 }
@@ -90,8 +94,8 @@ class _LikeButtonState extends State<LikeButton>
             widget.data['_agree_uncertain'] = 1;
           });
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+        ScaffoldMessenger.of(context).showAppSnackBar(
+          AppSnackBar(
             content: Text(
               e is TiebaException
                   ? (e.uncertain ? '点赞结果未确认，请刷新核对后再操作' : e.message)
@@ -131,8 +135,14 @@ class _LikeButtonState extends State<LikeButton>
                       _liked ? Icons.thumb_up : Icons.thumb_up_outlined,
                       size: 18,
                     ),
-              const SizedBox(width: 4),
-              Text(label, maxLines: 1, softWrap: false),
+              if (!widget.iconOnly || _count > 0) ...[
+                const SizedBox(width: 4),
+                Text(
+                  widget.iconOnly ? '$_count' : label,
+                  maxLines: 1,
+                  softWrap: false,
+                ),
+              ],
             ],
           ),
         ),

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../data/models.dart';
-import '../data/share_content.dart';
 import '../pages/user_page.dart';
 import 'post_widgets.dart';
 
@@ -24,9 +23,11 @@ class CommentCard extends StatelessWidget {
     this.like,
     this.ip = '',
     this.onBlock,
+    this.footer,
   });
   final Json user;
   final Widget? like;
+  final Widget? footer;
   final String ip;
   final VoidCallback? onBlock;
   final Map<int, String> levelNames;
@@ -113,7 +114,7 @@ class CommentCard extends StatelessWidget {
                                 ],
                               ),
                             ),
-                            if (like != null)
+                            if (like != null && !fullWidthContent)
                               SizedBox(
                                 width: (constraints.maxWidth * .26).clamp(
                                   42,
@@ -219,12 +220,16 @@ class CommentCard extends StatelessWidget {
                 left: fullWidthContent ? 0 : indent,
                 top: 4,
               ),
-              child: actions,
+              child:
+                  footer ??
+                  (fullWidthContent && like != null
+                      ? Row(children: [like!, const Spacer(), actions])
+                      : actions),
             ),
             if (preview != null)
               Padding(
                 padding: EdgeInsets.only(left: indent, top: 8),
-                child: preview,
+                child: SizedBox(width: double.infinity, child: preview),
               ),
           ],
         ),
@@ -307,53 +312,46 @@ class ReplyPreview extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final reply in visible)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text:
-                              '${author({...?users['${reply['author_id']}'], ...object(reply['author'])})}：',
-                          style: TextStyle(
-                            color: colors.primary,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        TextSpan(text: contentSummary(reply['content'])),
-                      ],
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.5,
-                      color: colors.onSurfaceVariant,
+        child: SizedBox(
+          width: double.infinity,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final reply in visible)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: InlinePostContent(
+                      prefix:
+                          '${author({...?users['${reply['author_id']}'], ...object(reply['author'])})}：',
+                      prefixColor: colors.primary,
+                      parts: contentParts(reply['content']),
+                      maxLines: 3,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.5,
+                        color: colors.onSurfaceVariant,
+                      ),
                     ),
                   ),
-                ),
-              if (total > visible.length || visible.isEmpty)
-                Padding(
-                  padding: EdgeInsets.only(
-                    top: visible.isEmpty ? 0 : 6,
-                    bottom: 2,
-                  ),
-                  child: Text(
-                    '查看全部 $total 条回复 ›',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: colors.primary,
-                      fontWeight: FontWeight.w500,
+                if (total > visible.length || visible.isEmpty)
+                  Padding(
+                    padding: EdgeInsets.only(
+                      top: visible.isEmpty ? 0 : 6,
+                      bottom: 2,
+                    ),
+                    child: Text(
+                      '查看全部 $total 条回复 ›',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colors.primary,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

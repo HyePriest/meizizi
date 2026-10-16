@@ -69,6 +69,25 @@ class AuthStore extends ChangeNotifier {
       await native.invokeMapMethod<String, String>('getBaiduCookies') ?? {};
   Future<void> prepareNewLogin() =>
       native.invokeMethod<void>('clearBaiduCookies');
+  Future<void> syncWebSession() async {
+    final identity = _active;
+    final cookies = Map<String, String>.from(_cookies);
+    // Account switching already clears the WebView cookie jar. Keep the current
+    // web session's auxiliary cookies so opening the inbox won't reset it.
+    final manager = WebViewCookieManager();
+    for (final entry in cookies.entries) {
+      if (_active != identity) throw const TiebaException('账号已切换，请重新打开');
+      await manager.setCookie(
+        WebViewCookie(
+          name: entry.key,
+          value: entry.value,
+          domain: '.baidu.com',
+          path: '/',
+        ),
+      );
+    }
+  }
+
   Future<void> save(Map<String, String> cookies, Json profile) async {
     final id = firstText([profile['id'], profile['user_id']]);
     if (id.isEmpty) throw const TiebaException('无法取得账号标识，请重新登录');

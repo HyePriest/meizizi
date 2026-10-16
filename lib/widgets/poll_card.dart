@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'dart:async';
+
 import '../data/models.dart';
 
 class PollCard extends StatefulWidget {
@@ -12,7 +14,7 @@ class PollCard extends StatefulWidget {
   });
   final Json poll;
   final Future<bool> Function(List<int>) onVote;
-  final VoidCallback onRefresh;
+  final FutureOr<void> Function() onRefresh;
   final bool hasVoted;
   @override
   State<PollCard> createState() => _PollCardState();
@@ -34,6 +36,7 @@ class _PollCardState extends State<PollCard> {
   }
 
   bool _busy = false, _confirmed = false, _uncertain = false;
+  bool _showResults = false, _refreshing = false;
   String? _error;
   bool get _multi => number(widget.poll['is_multi']) > 0;
   bool get _voted =>
@@ -60,7 +63,13 @@ class _PollCardState extends State<PollCard> {
     try {
       final success = await widget.onVote(_selected.toList()..sort());
       if (!mounted) return;
-      if (success) setState(() => _confirmed = true);
+      if (success) {
+        setState(() {
+          _confirmed = true;
+          _showResults = true;
+        });
+        await _refreshResults();
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -73,13 +82,31 @@ class _PollCardState extends State<PollCard> {
     }
   }
 
+  Future<void> _refreshResults() async {
+    if (_refreshing) return;
+    setState(() {
+      _refreshing = true;
+      _error = null;
+    });
+    try {
+      await widget.onRefresh();
+      if (mounted) setState(() => _showResults = true);
+    } catch (_) {
+      if (mounted)
+        setState(() => _error = _voted ? '已投票，票数刷新失败，请稍后刷新' : '票数加载失败，请重试');
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final options = objects(widget.poll['options']);
     if (options.isEmpty) return const SizedBox.shrink();
     final total = number(widget.poll['total_poll']);
     final users = number(widget.poll['total_num']);
-    final enabled = !_busy && !_voted && !_ended && !_uncertain;
+    final showResults = _showResults || _voted;
+    final enabled = !_busy && !_refreshing && !_voted && !_ended && !_uncertain;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Column(
@@ -90,7 +117,9 @@ class _PollCardState extends State<PollCard> {
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 4),
-          Text('${_multi ? '多选' : '单选'} · $users 人参与 · $total 票'),
+          Text(
+            '${_multi ? '多选' : '单选'}${showResults ? ' · $users 人参与 · $total 票' : ''}',
+          ),
           const SizedBox(height: 8),
           for (var index = 0; index < options.length; index++)
             Builder(
@@ -135,7 +164,7 @@ class _PollCardState extends State<PollCard> {
                         ),
                     ],
                   ),
-                  subtitle: Text('$votes 票 · $percent%'),
+                  subtitle: showResults ? Text('$votes 票 · $percent%') : null,
                   onTap: enabled
                       ? () {
                           final max = number(widget.poll['max_num']);
@@ -181,8 +210,14 @@ class _PollCardState extends State<PollCard> {
               ),
               const SizedBox(width: 8),
               TextButton(
-                onPressed: _busy ? null : widget.onRefresh,
-                child: const Text('刷新票数'),
+                onPressed: _busy || _refreshing ? null : _refreshResults,
+                child: Text(
+                  _refreshing
+                      ? '加载票数…'
+                      : showResults
+                      ? '刷新票数'
+                      : '查看票数',
+                ),
               ),
             ],
           ),

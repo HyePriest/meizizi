@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/models.dart';
+import '../data/emoji.dart';
 import '../pages/image_page.dart';
 import '../pages/video_page.dart';
 import '../pages/user_page.dart';
@@ -232,19 +233,75 @@ class ForumLevelBadge extends StatelessWidget {
 }
 
 String emojiUrl(Json part) {
-  for (final value in [part['src'], part['text'], part['c']]) {
-    final direct = httpsImage(value);
-    if (RegExp(r'image_emoticon(?:1)?\.png(?:\?|$)').hasMatch(direct)) {
-      return 'https://tb2.bdstatic.com/tb/editor/images/client/image_emoticon1.png';
-    }
-    if (direct.isNotEmpty) return direct;
-    final match = RegExp(r'image_emoticon(\d*)').firstMatch('${value ?? ''}');
-    if (match != null) {
-      final id = match.group(1)!;
-      return 'https://tb2.bdstatic.com/tb/editor/images/client/image_emoticon${id.isEmpty ? '1' : id}.png';
-    }
+  return emojiUrls(part).firstOrNull ?? '';
+}
+
+class TiebaEmoji extends StatelessWidget {
+  const TiebaEmoji({super.key, required this.part, this.size = 24});
+  final Json part;
+  final double size;
+  @override
+  Widget build(BuildContext context) {
+    final urls = emojiUrls(part);
+    final label = firstText([part['c'], part['text']], '表情');
+    Widget load(int index) => index >= urls.length
+        ? Text(
+            label.startsWith('[') ? label : '[$label]',
+            style: const TextStyle(fontSize: 12),
+          )
+        : Image.network(
+            urls[index],
+            width: size,
+            height: size,
+            fit: BoxFit.contain,
+            headers: const {'Referer': 'https://tieba.baidu.com/'},
+            errorBuilder: (_, _, _) => load(index + 1),
+          );
+    return Semantics(label: label, child: load(0));
   }
-  return '';
+}
+
+class InlinePostContent extends StatelessWidget {
+  const InlinePostContent({
+    super.key,
+    required this.parts,
+    this.prefix = '',
+    this.prefixColor,
+    this.maxLines = 3,
+    this.style,
+  });
+  final List<Json> parts;
+  final String prefix;
+  final Color? prefixColor;
+  final int maxLines;
+  final TextStyle? style;
+  @override
+  Widget build(BuildContext context) => Text.rich(
+    TextSpan(
+      children: [
+        if (prefix.isNotEmpty)
+          TextSpan(
+            text: prefix,
+            style: TextStyle(color: prefixColor, fontWeight: FontWeight.w500),
+          ),
+        for (final part in parts)
+          if (number(part['type']) == 2)
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: TiebaEmoji(part: part, size: 20),
+            )
+          else if ([3, 20].contains(number(part['type'])))
+            const TextSpan(text: '[图片]')
+          else if (number(part['type']) == 5)
+            const TextSpan(text: '[视频]')
+          else if (number(part['type']) != 52)
+            TextSpan(text: firstText([part['text']])),
+      ],
+    ),
+    maxLines: maxLines,
+    overflow: TextOverflow.ellipsis,
+    style: style ?? const TextStyle(fontSize: 14, height: 1.5),
+  );
 }
 
 String postImageUrl(Json part, {bool original = false}) {
@@ -358,28 +415,12 @@ class PostContent extends StatelessWidget {
           ),
         );
       } else if (type == 2) {
-        final url = emojiUrl(part);
-        final label = firstText([part['c'], part['text']], '表情');
-        if (url.isEmpty) {
-          spans.add(TextSpan(text: '[$label]'));
-        } else {
-          spans.add(
-            WidgetSpan(
-              alignment: PlaceholderAlignment.middle,
-              child: Semantics(
-                label: label,
-                child: Image.network(
-                  url,
-                  width: 24,
-                  height: 24,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) =>
-                      Text('[$label]', style: const TextStyle(fontSize: 12)),
-                ),
-              ),
-            ),
-          );
-        }
+        spans.add(
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: TiebaEmoji(part: part),
+          ),
+        );
       } else if ('${part['text'] ?? ''}'.isNotEmpty) {
         spans.add(TextSpan(text: '${part['text']}'));
       } else if (type != 0) {

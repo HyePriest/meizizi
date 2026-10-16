@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
+
+import 'dart:async';
+
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'pages/home_page.dart';
 
 import 'data/auth_store.dart';
 import 'data/local_store.dart';
+import 'data/app_update.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AuthStore.instance.restore();
   await LocalStore.instance.restore();
   runApp(const TiebaApp());
+  unawaited(AppUpdate.instance.check());
 }
 
 class TiebaApp extends StatelessWidget {

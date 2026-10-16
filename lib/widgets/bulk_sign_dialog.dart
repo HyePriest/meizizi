@@ -14,9 +14,25 @@ class BulkSignTask extends ChangeNotifier {
       _finished = false,
       _allSigned = false;
   String _identity = "";
-  bool get finished => _identity == AuthStore.instance.activeId && _finished;
+  DateTime? _startedDay;
+  bool get finished =>
+      _identity == AuthStore.instance.activeId &&
+      _finished &&
+      _startedDay == DateUtils.dateOnly(DateTime.now());
   bool get allSigned => finished && _allSigned;
-  int _total = 0, _completed = 0, _success = 0;
+  int _total = 0, _completed = 0, _success = 0, _unavailable = 0;
+  int get unavailable => _unavailable;
+  String get buttonLabel => running
+      ? '签到中…'
+      : !finished
+      ? '一键签到'
+      : allSigned
+      ? (_unavailable > 0 ? '签到完成' : '已全部签到')
+      : '部分未完成';
+  String get summary =>
+      '$_status · 已签 $_success / $_total 个吧'
+      '${_unavailable > 0 ? '，跳过 $_unavailable 个无法签到的吧' : ''}'
+      '${!_allSigned && _total > _success + _unavailable ? '，${_total - _success - _unavailable} 个未完成' : ''}';
   String _status = '正在读取关注的吧…';
   final List<String> _results = [];
   bool get running => _running;
@@ -35,11 +51,12 @@ class BulkSignTask extends ChangeNotifier {
     if (_running) return;
     _api = TiebaApi();
     _identity = AuthStore.instance.activeId;
+    _startedDay = DateUtils.dateOnly(DateTime.now());
     _finished = false;
     _allSigned = false;
     _running = true;
     _cancelled = false;
-    _total = _completed = _success = 0;
+    _total = _completed = _success = _unavailable = 0;
     _results.clear();
     _status = '正在读取关注的吧…';
     notifyListeners();
@@ -114,17 +131,27 @@ class BulkSignTask extends ChangeNotifier {
                   : const TiebaException('签到结果未确认，请核对', uncertain: true);
               final already =
                   e.message.contains('已签到') || e.message.contains('已经签到');
+              final unavailable =
+                  !already &&
+                  !e.uncertain &&
+                  unavailableForumMessage(e.message);
               if (already) {
                 await LocalStore.instance.markForumSigned(identity, name);
               }
               _update(() {
                 _completed++;
                 if (already) _success++;
+                if (unavailable) _unavailable++;
                 _results.add(
-                  '$name吧：${e.uncertain ? '结果未确认，请进入吧页面核对' : e.message}',
+                  '$name吧：${unavailable
+                      ? '无法签到，已跳过（${e.message}）'
+                      : e.uncertain
+                      ? '结果未确认，请进入吧页面核对'
+                      : e.message}',
                 );
               });
               if (!already &&
+                  !unavailable &&
                   (e.uncertain ||
                       [
                         '登录',
@@ -146,7 +173,7 @@ class BulkSignTask extends ChangeNotifier {
           !_cancelled &&
           stopped == null &&
           AuthStore.instance.activeId == identity &&
-          _success == _total;
+          _success + _unavailable == _total;
       _update(
         () => _status =
             stopped ??
