@@ -20,7 +20,7 @@ class _MyContentPageState extends State<MyContentPage> {
   final _items = <Json>[];
   late final String _account = AuthStore.instance.activeId;
   int _page = 0;
-  bool _busy = false, _more = true;
+  bool _busy = false, _more = true, _retryReset = true;
   String? _error;
   String get _title => switch (widget.kind) {
     MyContent.threads => '我的发帖',
@@ -55,6 +55,7 @@ class _MyContentPageState extends State<MyContentPage> {
 
   Future<void> _load({bool reset = false}) async {
     if (_busy) return;
+    _retryReset = reset;
     setState(() {
       _busy = true;
       _error = null;
@@ -136,6 +137,11 @@ class _MyContentPageState extends State<MyContentPage> {
                           threadId: tid,
                           title: _threadTitle(item),
                           forum: threadForumName(item),
+                          targetPostId:
+                              widget.kind == MyContent.replies &&
+                                  number(item['post_id']) > 0
+                              ? '${item['post_id']}'
+                              : null,
                         ),
                       ),
                     );
@@ -205,7 +211,7 @@ class _MyContentPageState extends State<MyContentPage> {
               children: [
                 Text(_error!),
                 TextButton(
-                  onPressed: () => _load(reset: _page == 0),
+                  onPressed: () => _load(reset: _retryReset),
                   child: const Text('重试'),
                 ),
               ],

@@ -12,7 +12,7 @@ class CommentCard extends StatelessWidget {
     required this.content,
     required this.actions,
     required this.onShare,
-    required this.onCopyLink,
+    required this.onReport,
     this.isOriginalPoster = false,
     this.nested = false,
     this.fullWidthContent = false,
@@ -22,6 +22,7 @@ class CommentCard extends StatelessWidget {
     this.levelNames = const {},
     this.like,
     this.ip = '',
+    this.ipWidget,
     this.onBlock,
     this.footer,
   });
@@ -29,6 +30,7 @@ class CommentCard extends StatelessWidget {
   final Widget? like;
   final Widget? footer;
   final String ip;
+  final Widget? ipWidget;
   final VoidCallback? onBlock;
   final Map<int, String> levelNames;
   final String subtitle;
@@ -37,16 +39,16 @@ class CommentCard extends StatelessWidget {
   final String? label;
   final bool isOriginalPoster, nested, fullWidthContent;
   final VoidCallback? onTap;
-  final VoidCallback onShare, onCopyLink;
+  final VoidCallback onShare, onReport;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final indent = nested ? 38.0 : 42.0;
+    const indent = 0.0;
     final body = InkWell(
       onTap: onTap,
       child: Padding(
-        padding: EdgeInsets.fromLTRB(14, nested ? 14 : 16, 14, nested ? 8 : 12),
+        padding: EdgeInsets.fromLTRB(10, nested ? 14 : 16, 10, nested ? 8 : 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -63,11 +65,11 @@ class CommentCard extends StatelessWidget {
                 ),
               ),
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 GestureDetector(
                   onTap: () => openUser(context, user),
-                  child: UserAvatar(user: user, size: nested ? 28 : 32),
+                  child: UserAvatar(user: user, size: nested ? 40 : 44),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -153,8 +155,8 @@ class CommentCard extends StatelessWidget {
                                     onShare();
                                   } else if (value == 'block') {
                                     onBlock?.call();
-                                  } else {
-                                    onCopyLink();
+                                  } else if (value == 'report') {
+                                    onReport();
                                   }
                                 },
                                 itemBuilder: (_) => [
@@ -162,9 +164,11 @@ class CommentCard extends StatelessWidget {
                                     value: 'share',
                                     child: Text('分享评论'),
                                   ),
-                                  const PopupMenuItem(
-                                    value: 'copy',
-                                    child: Text('复制链接'),
+                                  PopupMenuItem(
+                                    value: 'report',
+                                    child: Text(
+                                      fullWidthContent ? '举报帖子' : '举报评论',
+                                    ),
                                   ),
                                   if (onBlock != null)
                                     const PopupMenuItem(
@@ -182,6 +186,8 @@ class CommentCard extends StatelessWidget {
                         spacing: 8,
                         runSpacing: 2,
                         children: [
+                          if (forumRole(user).isNotEmpty)
+                            ForumRoleBadge(user: user),
                           Text(
                             subtitle,
                             style: TextStyle(
@@ -190,7 +196,9 @@ class CommentCard extends StatelessWidget {
                               color: colors.onSurfaceVariant,
                             ),
                           ),
-                          if (ip.isNotEmpty)
+                          if (ipWidget != null)
+                            ipWidget!
+                          else if (ip.isNotEmpty)
                             Text(
                               'IP：$ip',
                               maxLines: 1,
@@ -210,7 +218,7 @@ class CommentCard extends StatelessWidget {
             ),
             Padding(
               padding: EdgeInsets.only(
-                left: fullWidthContent ? 0 : indent,
+                left: fullWidthContent ? 0 : 6,
                 top: nested ? 8 : 12,
               ),
               child: content,
@@ -327,6 +335,7 @@ class ReplyPreview extends StatelessWidget {
                           '${author({...?users['${reply['author_id']}'], ...object(reply['author'])})}：',
                       prefixColor: colors.primary,
                       parts: contentParts(reply['content']),
+                      highlightReplyTarget: true,
                       maxLines: 3,
                       style: TextStyle(
                         fontSize: 13,

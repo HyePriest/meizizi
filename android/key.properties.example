@@ -1,0 +1,6 @@
+# Copy to key.properties locally. Never commit that file or the keystore.
+# Preserve the certificate used by existing APKs for in-place updates.
+storeFile=C:/path/to/tieba.keystore
+storePassword=replace-locally
+keyAlias=replace-locally
+keyPassword=replace-locally

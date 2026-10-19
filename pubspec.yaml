@@ -1,7 +1,7 @@
 name: tieba
 description: "精简的第三方贴吧 Android 客户端"
 publish_to: 'none'
-version: 0.9.1+21
+version: 0.10.12+34
 
 environment:
   sdk: ^3.13.5
@@ -28,5 +28,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/levels/
-
-
+    - assets/emoji/
+    - assets/emoji/baidu/

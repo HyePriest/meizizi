@@ -48,7 +48,7 @@ class _MessagesListState extends State<_MessagesList>
   int _page = 0;
   String _cursor = '';
   String? _error;
-  bool _busy = false, _more = true;
+  bool _busy = false, _more = true, _retryReset = true;
   @override
   bool get wantKeepAlive => true;
   @override
@@ -78,6 +78,7 @@ class _MessagesListState extends State<_MessagesList>
       '${item['id']}:${item['post_id']}:${item['time'] ?? item['op_time']}:${item['op_user_id'] ?? object(item['replyer'])['id']}';
   Future<void> _load({bool reset = false}) async {
     if (_busy || _account != AuthStore.instance.activeId) return;
+    _retryReset = reset;
     setState(() {
       _busy = true;
       _error = null;
@@ -134,6 +135,14 @@ class _MessagesListState extends State<_MessagesList>
                     threadId: tid,
                     title: title,
                     forum: forum,
+                    targetPostId:
+                        !flag(item['is_floor']) && number(item['post_id']) > 0
+                        ? '${item['post_id']}'
+                        : null,
+                    targetReplyId:
+                        flag(item['is_floor']) && number(item['post_id']) > 0
+                        ? '${item['post_id']}'
+                        : null,
                     postId:
                         flag(item['is_floor']) && number(item['quote_pid']) > 0
                         ? '${item['quote_pid']}'
@@ -205,7 +214,7 @@ class _MessagesListState extends State<_MessagesList>
             if (_error != null) ...[
               Text(_error!, textAlign: TextAlign.center),
               TextButton(
-                onPressed: () => _load(reset: _page == 0),
+                onPressed: () => _load(reset: _retryReset),
                 child: const Text('重试'),
               ),
             ],

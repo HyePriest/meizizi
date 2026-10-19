@@ -14,6 +14,53 @@ class LocalStore extends ChangeNotifier {
   Map<String, String> blockedUsers = {};
   List<String> forumKeywords = [];
   List<Json> history = [];
+  Map<String, dynamic> _reading = {};
+  final _readingPages = <String, Json>{};
+  Json? readingPage(String account, String tid, {String parent = ''}) {
+    final key = '$account:$tid:$parent';
+    final page = _readingPages.remove(key);
+    if (page != null) _readingPages[key] = page;
+    return page;
+  }
+
+  void rememberReadingPage(
+    String account,
+    String tid,
+    Json page, {
+    String parent = '',
+  }) {
+    final key = '$account:$tid:$parent';
+    _readingPages.remove(key);
+    // Keep several recently read pages without retaining an unbounded long thread.
+    if (objects(page['items']).length > 240) return;
+    _readingPages[key] = page;
+    while (_readingPages.length > 8 ||
+        _readingPages.values.fold<int>(
+              0,
+              (n, p) => n + (p['items'] as List).length,
+            ) >
+            700) {
+      _readingPages.remove(_readingPages.keys.first);
+    }
+  }
+
+  void clearReadingPages() => _readingPages.clear();
+  Json readingPosition(String tid, {String parent = ''}) =>
+      object(_reading['$tid:$parent']);
+  Future<void> saveReadingPosition(
+    String tid,
+    Json position, {
+    String parent = '',
+  }) async {
+    final key = '$tid:$parent';
+    _reading.remove(key);
+    _reading[key] = position;
+    while (_reading.length > 200) {
+      _reading.remove(_reading.keys.first);
+    }
+    await _prefs.setString('reading_positions', jsonEncode(_reading));
+  }
+
   String themePreference = 'system';
   Map<String, String> _signedForums = {};
   static String _signDay(DateTime now) => '${now.year}-${now.month}-${now.day}';
@@ -36,6 +83,13 @@ class LocalStore extends ChangeNotifier {
 
   Future<void> restore() async {
     _prefs = await SharedPreferences.getInstance();
+    try {
+      _reading = object(
+        jsonDecode(_prefs.getString('reading_positions') ?? '{}'),
+      );
+    } catch (_) {
+      _reading = {};
+    }
     final theme = _prefs.getString('theme_mode');
     themePreference = ['light', 'dark', 'system'].contains(theme)
         ? theme!
@@ -110,8 +164,11 @@ class LocalStore extends ChangeNotifier {
   }
 
   Future<void> clearHistory() async {
+    clearReadingPages();
     await _prefs.remove('thread_history');
     await _prefs.remove('recent_forums');
+    await _prefs.remove('reading_positions');
+    _reading = {};
     history = [];
     recent = [];
     notifyListeners();

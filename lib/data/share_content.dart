@@ -1,12 +1,13 @@
 import 'package:flutter/services.dart';
 
 import 'models.dart';
+import 'emoji.dart';
 
 String contentSummary(dynamic content) => contentParts(content)
     .map((part) {
       final type = number(part['type']);
       if (type == 52) return '';
-      if (type == 2) return '[${firstText([part['c']], '表情')}]';
+      if (type == 2) return resolveEmoji(part).fallback;
       if (type == 3 || type == 20) return '[图片]';
       if (type == 5) return '[视频]';
       if (type == 10) return '[语音]';

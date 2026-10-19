@@ -30,6 +30,7 @@ class _HomePageState extends State<HomePage> {
   int _tab = 0, _page = 0, _revision = 0;
   bool _busy = false, _hasMore = true;
   String? _error;
+  bool _retryReset = true;
   final Map<
     int,
     ({
@@ -37,6 +38,7 @@ class _HomePageState extends State<HomePage> {
       Map<String, Json> users,
       int page,
       bool more,
+      bool retryReset,
       String? error,
       double offset,
     })
@@ -103,6 +105,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _load({bool reset = false}) async {
     if (_tab == 2 || (_busy && !reset)) return;
     final revision = ++_revision, tab = _tab, next = reset ? 1 : _page + 1;
+    _retryReset = reset;
     setState(() {
       _busy = true;
       _error = null;
@@ -257,14 +260,14 @@ class _HomePageState extends State<HomePage> {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 8, 4),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             InkWell(
               onTap: forum.isEmpty ? null : () => _open(forum),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ForumAvatar(
                     forum: {
@@ -297,8 +300,14 @@ class _HomePageState extends State<HomePage> {
                   ),
                   Flexible(
                     child: Align(
-                      alignment: Alignment.bottomRight,
+                      alignment: Alignment.topRight,
                       child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          alignment: Alignment.topRight,
+                          padding: const EdgeInsets.fromLTRB(8, 2, 0, 0),
+                          minimumSize: const Size(0, 42),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
                         onPressed: () => openUser(context, user),
                         icon: UserAvatar(user: user, size: 20),
                         label: Text(
@@ -373,6 +382,36 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _resumeCard() {
+    final history = LocalStore.instance.history;
+    if (history.isEmpty) return const SizedBox.shrink();
+    final item = history.first;
+    final tid = firstText([item['id']]);
+    if (tid.isEmpty) return const SizedBox.shrink();
+    final floor = number(LocalStore.instance.readingPosition(tid)['floor']);
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.history),
+        title: const Text('继续阅读'),
+        subtitle: Text(
+          '${firstText([item['title']], '上次的帖子')}${floor > 1 ? ' · 第 $floor 楼' : ''}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ReadingPage(
+              threadId: tid,
+              title: firstText([item['title']]),
+              forum: firstText([item['forum']]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _content() {
     final visible = _tab == 0
         ? _items
@@ -381,136 +420,156 @@ class _HomePageState extends State<HomePage> {
         : _items;
     return RefreshIndicator(
       onRefresh: () => _load(reset: true),
-      child: ListView(
+      child: ListView.builder(
         controller: _scroll,
         key: ValueKey(_tab),
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(12),
-        children: [
-          if (_tab == 1) ...[
-            if (LocalStore.instance.recent.isNotEmpty) ...[
-              Text('最近浏览', style: Theme.of(context).textTheme.titleMedium),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final name in LocalStore.instance.recent)
-                    ActionChip(
-                      label: Text('$name吧'),
-                      onPressed: () => _open(name),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 16),
-            ],
-            Row(
+        itemCount: visible.length + 2,
+        itemBuilder: (context, index) {
+          if (index > 0 && index <= visible.length)
+            return _entry(visible[index - 1]);
+          if (index == 0)
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    '我关注的吧',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                ListenableBuilder(
-                  listenable: BulkSignTask.instance,
-                  builder: (context, _) {
-                    final task = BulkSignTask.instance;
-                    return FilledButton.tonalIcon(
-                      onPressed: task.running ? null : _bulkSign,
-                      icon: Icon(
-                        task.allSigned ? Icons.check : Icons.event_available,
-                      ),
-                      label: Text(task.buttonLabel),
-                    );
-                  },
-                ),
-              ],
-            ),
-            ListenableBuilder(
-              listenable: BulkSignTask.instance,
-              builder: (context, _) {
-                final task = BulkSignTask.instance;
-                if (!task.finished) return const SizedBox.shrink();
-                return Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () => showModalBottomSheet<void>(
-                      context: context,
-                      isScrollControlled: true,
-                      builder: (_) => SafeArea(
-                        child: SizedBox(
-                          height: MediaQuery.sizeOf(context).height * .65,
-                          child: ListView(
-                            padding: const EdgeInsets.all(16),
-                            children: [
-                              Text(task.summary),
-                              const Divider(),
-                              for (final result in task.results)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 6,
-                                  ),
-                                  child: Text(result),
-                                ),
-                            ],
+                _resumeCard(),
+                if (_tab == 1) ...[
+                  if (LocalStore.instance.recent.isNotEmpty) ...[
+                    Text(
+                      '最近浏览',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        for (final name in LocalStore.instance.recent)
+                          ActionChip(
+                            label: Text('$name吧'),
+                            onPressed: () => _open(name),
                           ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '我关注的吧',
+                          style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
-                    ),
-                    child: Text(
-                      '已签 ${task.success} 个${task.unavailable > 0 ? ' · 跳过 ${task.unavailable} 个' : ''} · 查看结果',
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-            if (!AuthStore.instance.isLoggedIn)
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  children: [
-                    const Text('登录后查看已关注的吧并签到'),
-                    TextButton(
-                      onPressed: () => Navigator.of(context).push<bool>(
-                        MaterialPageRoute(builder: (_) => const LoginPage()),
+                      ListenableBuilder(
+                        listenable: BulkSignTask.instance,
+                        builder: (context, _) {
+                          final task = BulkSignTask.instance;
+                          return FilledButton.tonalIcon(
+                            onPressed: task.running ? null : _bulkSign,
+                            icon: Icon(
+                              task.allSigned
+                                  ? Icons.check
+                                  : Icons.event_available,
+                            ),
+                            label: Text(task.buttonLabel),
+                          );
+                        },
                       ),
-                      child: const Text('登录'),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-          ...visible.map(_entry),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  Text(_error!, textAlign: TextAlign.center),
-                  TextButton(
-                    onPressed: () => _load(reset: _items.isEmpty),
-                    child: const Text('重试'),
+                    ],
                   ),
+                  ListenableBuilder(
+                    listenable: BulkSignTask.instance,
+                    builder: (context, _) {
+                      final task = BulkSignTask.instance;
+                      if (!task.finished) return const SizedBox.shrink();
+                      return Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () => showModalBottomSheet<void>(
+                            context: context,
+                            isScrollControlled: true,
+                            builder: (_) => SafeArea(
+                              child: SizedBox(
+                                height: MediaQuery.sizeOf(context).height * .65,
+                                child: ListView(
+                                  padding: const EdgeInsets.all(16),
+                                  children: [
+                                    Text(task.summary),
+                                    const Divider(),
+                                    for (final result in task.results)
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 6,
+                                        ),
+                                        child: Text(result),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          child: Text(
+                            '已签 ${task.success} 个${task.unavailable > 0 ? ' · 跳过 ${task.unavailable} 个' : ''} · 查看结果',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  if (!AuthStore.instance.isLoggedIn)
+                    Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        children: [
+                          const Text('登录后查看已关注的吧并签到'),
+                          TextButton(
+                            onPressed: () => Navigator.of(context).push<bool>(
+                              MaterialPageRoute(
+                                builder: (_) => const LoginPage(),
+                              ),
+                            ),
+                            child: const Text('登录'),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
-              ),
-            ),
-          if (_busy)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_hasMore && _error == null)
-            TextButton(onPressed: _load, child: const Text('加载下一页'))
-          else if (visible.isEmpty &&
-              _error == null &&
-              (_tab == 0 || AuthStore.instance.isLoggedIn))
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Center(
-                child: Text(_items.isNotEmpty ? '本页内容已被屏蔽' : '暂时没有内容'),
-              ),
-            ),
-        ],
+              ],
+            );
+          return Column(
+            children: [
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      Text(_error!, textAlign: TextAlign.center),
+                      TextButton(
+                        onPressed: () => _load(reset: _retryReset),
+                        child: const Text('重试'),
+                      ),
+                    ],
+                  ),
+                ),
+              if (_busy)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (_hasMore && _error == null)
+                TextButton(onPressed: _load, child: const Text('加载下一页'))
+              else if (visible.isEmpty &&
+                  _error == null &&
+                  (_tab == 0 || AuthStore.instance.isLoggedIn))
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: Text(_items.isNotEmpty ? '本页内容已被屏蔽' : '暂时没有内容'),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -569,6 +628,7 @@ class _HomePageState extends State<HomePage> {
             users: Map.of(_users),
             page: _page,
             more: _hasMore,
+            retryReset: _retryReset,
             error: _error,
             offset: _scroll.hasClients ? _scroll.offset : 0,
           );
@@ -583,6 +643,7 @@ class _HomePageState extends State<HomePage> {
           _page = saved?.page ?? 0;
           _hasMore = saved?.more ?? true;
           _error = saved?.error;
+          _retryReset = saved?.retryReset ?? true;
         });
         if (tab != 2) {
           WidgetsBinding.instance.addPostFrameCallback((_) {

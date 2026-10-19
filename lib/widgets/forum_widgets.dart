@@ -63,10 +63,12 @@ class SignButton extends StatefulWidget {
     required this.name,
     this.signed = false,
     this.followed = true,
+    this.compact = false,
   });
   final String name;
   final bool signed;
   final bool followed;
+  final bool compact;
   @override
   State<SignButton> createState() => _SignButtonState();
 }
@@ -142,6 +144,25 @@ class _SignButtonState extends State<SignButton> {
           (widget.signed ||
               LocalStore.instance.forumSigned(auth.activeId, widget.name));
       final uncertain = auth.isLoggedIn && _uncertainAccount == auth.bduss;
+      if (widget.compact)
+        return FilledButton.tonal(
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            minimumSize: const Size(72, 36),
+          ),
+          onPressed: _busy || signed || uncertain || !widget.followed
+              ? null
+              : _sign,
+          child: Text(
+            _busy
+                ? '签到中'
+                : signed
+                ? '已签到'
+                : uncertain
+                ? '请刷新'
+                : '签到',
+          ),
+        );
       return FilledButton.tonalIcon(
         onPressed: _busy || signed || uncertain || !widget.followed
             ? null

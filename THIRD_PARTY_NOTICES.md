@@ -3,19 +3,21 @@
 本项目使用 Flutter / Dart 及以下直接依赖，精确版本见 `pubspec.lock`：
 
 - Flutter 与 flutter_localizations：https://github.com/flutter/flutter
-- http 与 crypto：https://github.com/dart-lang/http 、https://github.com/dart-lang/core
-- shared_preferences 与 webview_flutter：https://github.com/flutter/packages
+- http：https://github.com/dart-lang/http
+- crypto：https://github.com/dart-lang/core
+- shared_preferences、webview_flutter 与 flutter_lints：https://github.com/flutter/packages
 - flutter_secure_storage：https://github.com/mogol/flutter_secure_storage
 - html：https://github.com/dart-lang/html
-- 开发依赖 flutter_lints：https://github.com/flutter/packages
 - Android 构建使用 Gradle：https://github.com/gradle/gradle
 
-上述组件按各自项目的许可证使用。Flutter 会将依赖包的许可证收集到应用中，可从「我 → 关于贴吧 → 查看许可证」查看；仓库中的 Gradle wrapper 属于 Gradle 项目。
+各组件按其项目许可证使用。Flutter 收集的依赖许可证可在应用的关于页面查看，Gradle wrapper 属于 Gradle 项目。
 
-贴吧协议资料参考 Tiebanana 与 aiotieba；本项目没有复制其客户端代码、图片或表情素材。帖子、头像和表情在运行时从百度服务加载，相关内容和商标归其权利人所有。
+## 协议参考
 
-本应用是第三方客户端，与百度官方无隶属关系。
+协议与字段资料参考 Tiebanana（https://github.com/Aobanana-chan/Tiebanana）、aiotieba（https://github.com/lumina37/aiotieba）、TiebaLite（https://github.com/zzc10086/TiebaLite 、https://github.com/HuanCheng65/TiebaLite）及百度系优化（https://github.com/WhiteSevs/TamperMonkeyScript）的公开资料。
 
-0.9.1 的通知接口和表情名称映射另参考 TiebaLite（https://github.com/HuanCheng65/TiebaLite）、Tiebanana（https://github.com/Aobanana-chan/Tiebanana）及百度系优化（https://github.com/WhiteSevs/TamperMonkeyScript）的公开协议资料。私信通过应用内 WebView 使用百度官方页面；版本更新读取本项目 GitHub Releases 的公开信息。
+## 内容与资源
 
-0.6.2 新增的官方等级图标归百度及相关权利人所有，资源链接和等级映射见 assets/levels/README.md。原生帖子协议字段另参考 TiebaLite：https://github.com/zzc10086/TiebaLite 。
+帖子、头像及媒体从百度服务加载，相关内容与商标归其权利人所有。仓库内 `assets/levels/` 与 `assets/emoji/` 包含贴吧／百度的等级、经典表情及相关表情资源，供客户端显示对应内容，权利归百度及相关权利人所有；等级图标原始地址见 `assets/levels/README.md`。这些资源不因收录于本项目而变更许可。
+
+私信支持原生读取及官方页面入口；版本更新读取本项目 GitHub Releases 的公开信息。本应用是第三方客户端，与百度官方无隶属关系。

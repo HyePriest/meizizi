@@ -45,8 +45,10 @@ class ThreadThumbnails extends StatelessWidget {
                 child: InkWell(
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) =>
-                          ImagePage(url: '${visible[i]['original']}'),
+                      builder: (_) => ImagePage(
+                        url: '${visible[i]['original']}',
+                        urls: images.map((p) => '${p['original']}').toList(),
+                      ),
                     ),
                   ),
                   child: ClipRRect(

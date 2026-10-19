@@ -7,6 +7,21 @@ import 'models.dart';
 // Unknown fields are skipped so server additions do not affect reading.
 typedef _Field = (String, String, bool);
 const _schemas = <String, Map<int, _Field>>{
+  'bawuResponse': {
+    1: ('data', 'bawuData', false),
+    2: ('error', 'error', false),
+  },
+  'bawuData': {1: ('team', 'bawuTeam', false)},
+  'bawuTeam': {1: ('total', 'int', false), 2: ('groups', 'bawuGroup', true)},
+  'bawuGroup': {1: ('role', 'string', false), 2: ('users', 'bawuUser', true)},
+  'bawuUser': {
+    2: ('id', 'int', false),
+    4: ('forum_role', 'string', false),
+    5: ('portrait', 'string', false),
+    6: ('level_id', 'int', false),
+    8: ('name', 'string', false),
+    9: ('name_show', 'string', false),
+  },
   'floorResponse': {
     1: ('error', 'error', false),
     2: ('data', 'floorData', false),
@@ -26,6 +41,7 @@ const _schemas = <String, Map<int, _Field>>{
     6: ('floor', 'int', false),
     7: ('author', 'user', false),
     9: ('agree', 'agree', false),
+    13: ('footer', 'string', false),
   },
   'video': {
     2: ('video_url', 'string', false),
@@ -96,6 +112,7 @@ const _schemas = <String, Map<int, _Field>>{
     23: ('level_id', 'int', false),
     25: ('is_bawu', 'int', false),
     26: ('bawu_type', 'string', false),
+    125: ('level_name', 'string', false),
     127: ('ip_address', 'string', false),
   },
   'agree': {
@@ -124,6 +141,10 @@ const _schemas = <String, Map<int, _Field>>{
     8: ('cdn_src', 'string', false),
     9: ('big_cdn_src', 'string', false),
     11: ('c', 'string', false),
+    12: ('voice_md5', 'string', false),
+    13: ('during_time', 'int', false),
+    18: ('width', 'int', false),
+    19: ('height', 'int', false),
     25: ('origin_src', 'string', false),
     27: ('origin_size', 'int', false),
   },
@@ -249,6 +270,13 @@ Uint8List encodeHotPosts(
 }
 
 Json decodeFloorResponse(Uint8List bytes) => _decode(bytes, 'floorResponse');
+Json decodeBawuResponse(Uint8List bytes) => _decode(bytes, 'bawuResponse');
+Uint8List encodeBawu(String fid) => Uint8List.fromList(
+  _bytes(1, [
+    ..._bytes(1, _bytes(2, utf8.encode('22.12.1.0'))),
+    ..._int(2, int.parse(fid)),
+  ]),
+);
 Json decodePollResponse(Uint8List bytes) => _decode(bytes, 'pollResponse');
 
 Uint8List encodePoll(
@@ -284,6 +312,7 @@ Uint8List encodeFloor(
   required String bduss,
   required String stoken,
   required String cuid,
+  String? targetReply,
 }) {
   final common = [
     ..._int(1, 2),
@@ -296,7 +325,8 @@ Uint8List encodeFloor(
     _bytes(1, [
       ..._int(1, int.parse(tid)),
       ..._int(2, int.parse(pid)),
-      ..._int(4, page),
+      if (targetReply != null) ..._int(3, int.parse(targetReply)),
+      if (targetReply == null) ..._int(4, page),
       ..._bytes(9, common),
     ]),
   );

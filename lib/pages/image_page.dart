@@ -8,31 +8,46 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 class ImagePage extends StatefulWidget {
-  const ImagePage({super.key, required this.url});
+  const ImagePage({super.key, required this.url, this.urls = const []});
   final String url;
+  final List<String> urls;
   @override
   State<ImagePage> createState() => _ImagePageState();
 }
 
 class _ImagePageState extends State<ImagePage> {
-  final _transform = TransformationController();
   final _client = http.Client();
-  Offset _tap = Offset.zero;
+  late final List<String> _images;
+  late final PageController _pages;
+  late int _index;
+  bool _zoomed = false;
+  String get _url => _images[_index];
   bool _saving = false;
   @override
+  void initState() {
+    super.initState();
+    _images = (widget.urls.isEmpty ? [widget.url] : widget.urls)
+        .toSet()
+        .toList();
+    _index = _images.indexOf(widget.url).clamp(0, _images.length - 1);
+    _pages = PageController(initialPage: _index);
+  }
+
+  @override
   void dispose() {
-    _transform.dispose();
+    _pages.dispose();
     _client.close();
     super.dispose();
   }
 
   Future<void> _save() async {
     if (_saving) return;
+    final url = _url;
     setState(() => _saving = true);
     try {
       final response = await _client
           .send(
-            http.Request('GET', Uri.parse(widget.url))
+            http.Request('GET', Uri.parse(url))
               ..headers['Referer'] = 'https://tieba.baidu.com/',
           )
           .timeout(const Duration(seconds: 25));
@@ -90,13 +105,8 @@ class _ImagePageState extends State<ImagePage> {
     appBar: AppBar(
       backgroundColor: Colors.black,
       foregroundColor: Colors.white,
-      title: const Text('图片'),
+      title: Text('${_index + 1} / ${_images.length}'),
       actions: [
-        IconButton(
-          tooltip: '恢复大小',
-          onPressed: () => _transform.value = Matrix4.identity(),
-          icon: const Icon(Icons.fit_screen),
-        ),
         IconButton(
           tooltip: '下载图片',
           onPressed: _saving ? null : _save,
@@ -110,36 +120,81 @@ class _ImagePageState extends State<ImagePage> {
         ),
       ],
     ),
-    body: LayoutBuilder(
-      builder: (context, constraints) => GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onDoubleTapDown: (details) => _tap = details.localPosition,
-        onDoubleTap: () {
-          _transform.value = _transform.value.getMaxScaleOnAxis() > 1.01
-              ? Matrix4.identity()
-              : (Matrix4.diagonal3Values(3, 3, 1)
-                  ..setTranslationRaw(-2 * _tap.dx, -2 * _tap.dy, 0));
+    body: PageView.builder(
+      controller: _pages,
+      itemCount: _images.length,
+      physics: _zoomed ? const NeverScrollableScrollPhysics() : null,
+      onPageChanged: (index) => setState(() {
+        _index = index;
+        _zoomed = false;
+      }),
+      itemBuilder: (_, index) => _GalleryImage(
+        key: ValueKey(_images[index]),
+        url: _images[index],
+        onZoom: (value) {
+          if (mounted && index == _index && value != _zoomed)
+            setState(() => _zoomed = value);
         },
-        child: InteractiveViewer(
-          transformationController: _transform,
-          minScale: 1,
-          maxScale: 8,
-          child: SizedBox(
-            width: constraints.maxWidth,
-            height: constraints.maxHeight,
-            child: Image.network(
-              widget.url,
-              headers: const {'Referer': 'https://tieba.baidu.com/'},
-              fit: BoxFit.contain,
-              loadingBuilder: (_, child, progress) => progress == null
-                  ? child
-                  : const Center(child: CircularProgressIndicator()),
-              errorBuilder: (_, _, _) => const Center(
-                child: Text(
-                  '图片加载失败，请返回重试',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
+      ),
+    ),
+  );
+}
+
+class _GalleryImage extends StatefulWidget {
+  const _GalleryImage({super.key, required this.url, required this.onZoom});
+  final String url;
+  final ValueChanged<bool> onZoom;
+  @override
+  State<_GalleryImage> createState() => _GalleryImageState();
+}
+
+class _GalleryImageState extends State<_GalleryImage> {
+  final _transform = TransformationController();
+  Offset _tap = Offset.zero;
+  @override
+  void initState() {
+    super.initState();
+    _transform.addListener(
+      () => widget.onZoom(_transform.value.getMaxScaleOnAxis() > 1.01),
+    );
+  }
+
+  @override
+  void dispose() {
+    _transform.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onDoubleTapDown: (details) => _tap = details.localPosition,
+      onDoubleTap: () =>
+          _transform.value = _transform.value.getMaxScaleOnAxis() > 1.01
+          ? Matrix4.identity()
+          : (Matrix4.diagonal3Values(3, 3, 1)
+              ..setTranslationRaw(-2 * _tap.dx, -2 * _tap.dy, 0)),
+      child: InteractiveViewer(
+        transformationController: _transform,
+        minScale: 1,
+        maxScale: 8,
+        panEnabled: _transform.value.getMaxScaleOnAxis() > 1.01,
+        onInteractionEnd: (_) {
+          if (mounted) setState(() {});
+        },
+        child: SizedBox(
+          width: constraints.maxWidth,
+          height: constraints.maxHeight,
+          child: Image.network(
+            widget.url,
+            headers: const {'Referer': 'https://tieba.baidu.com/'},
+            fit: BoxFit.contain,
+            loadingBuilder: (_, child, progress) => progress == null
+                ? child
+                : const Center(child: CircularProgressIndicator()),
+            errorBuilder: (_, _, _) => const Center(
+              child: Text('图片加载失败', style: TextStyle(color: Colors.white)),
             ),
           ),
         ),

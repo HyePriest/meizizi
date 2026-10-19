@@ -28,22 +28,29 @@ class _UpdatePageState extends State<UpdatePage> {
             const Text('当前版本 ${AppUpdate.version}'),
             const SizedBox(height: 16),
             Text(
-              update.available
-                  ? '发现新版本 ${update.latest}'
-                  : update.checking
+              update.checking
                   ? '正在检查更新…'
-                  : update.error != null
-                  ? '检查更新未完成'
+                  : update.checkError != null
+                  ? '暂时无法确认最新版本'
+                  : update.available
+                  ? '发现新版本 ${update.latest}'
                   : update.latest.isEmpty
                   ? '查看是否有新版本'
                   : '已是最新版本',
               style: Theme.of(context).textTheme.titleLarge,
             ),
-            if (update.error != null)
+            if (update.latest.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('公开发布版本 ${update.latest}'),
+            ],
+            if (update.checkError != null || update.error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Text(
-                  update.error!,
+                  [
+                    update.checkError,
+                    update.error,
+                  ].whereType<String>().join('\n'),
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ),
@@ -67,7 +74,35 @@ class _UpdatePageState extends State<UpdatePage> {
               child: const Text('重新检查更新'),
             ),
             if (update.downloading) const LinearProgressIndicator(),
-            if (update.available && update.notes.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: () => update.openLink(update.downloadUrl),
+              icon: const Icon(Icons.download_outlined),
+              label: Text(
+                update.latest.isEmpty
+                    ? '打开最新发布页下载'
+                    : '浏览器直接下载 ${update.latest}',
+              ),
+            ),
+            const SizedBox(height: 8),
+            SelectableText(
+              update.downloadUrl,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            TextButton.icon(
+              onPressed: () => update.openLink(update.releaseUrl),
+              icon: const Icon(Icons.new_releases_outlined),
+              label: const Text('查看最新发布'),
+            ),
+            const SizedBox(height: 12),
+            const Text('项目地址'),
+            TextButton.icon(
+              onPressed: () => update.openLink(AppUpdate.projectUrl),
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('GitHub 项目主页'),
+            ),
+            const SelectableText(AppUpdate.projectUrl),
+            if (update.notes.isNotEmpty) ...[
               const SizedBox(height: 20),
               const Text('更新内容'),
               const SizedBox(height: 8),

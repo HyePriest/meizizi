@@ -30,11 +30,13 @@ class _ReplyPageState extends State<ReplyPage> {
   Timer? _saveTimer;
   bool _busy = false, _sent = false, _uncertain = false;
   String? _error;
+  late String _draftAccount;
   String get _key =>
-      'reply_draft_${widget.threadId}_${widget.postId ?? 'thread'}';
+      'reply_draft_v2_${_draftAccount}_${widget.threadId}_${widget.postId ?? 'thread'}_${widget.replyUid ?? 'all'}';
   @override
   void initState() {
     super.initState();
+    _draftAccount = AuthStore.instance.activeId;
     _prefs = SharedPreferences.getInstance();
     _restore();
     _controller.addListener(() {
@@ -55,13 +57,14 @@ class _ReplyPageState extends State<ReplyPage> {
 
   Future<void> _save(String value) async {
     if (_sent) return;
+    final key = _key;
     try {
       final prefs = await _prefs;
       if (_sent) return;
       if (value.isEmpty) {
-        await prefs.remove(_key);
+        await prefs.remove(key);
       } else {
-        await prefs.setString(_key, value);
+        await prefs.setString(key, value);
       }
     } catch (_) {}
   }
@@ -85,7 +88,19 @@ class _ReplyPageState extends State<ReplyPage> {
     if (!AuthStore.instance.isLoggedIn) {
       await Navigator.of(context)
           .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
-      if (mounted) setState(() {});
+      if (mounted && AuthStore.instance.isLoggedIn) {
+        if (_draftAccount.isEmpty) {
+          _draftAccount = AuthStore.instance.activeId;
+          await _save(_controller.text);
+        } else if (_draftAccount != AuthStore.instance.activeId) {
+          _error = '账号已切换，请返回后重新打开回复，原账号草稿已保留';
+        }
+        if (mounted) setState(() {});
+      }
+      return;
+    }
+    if (_draftAccount != AuthStore.instance.activeId) {
+      setState(() => _error = '账号已切换，请返回后重新打开回复，原账号草稿已保留');
       return;
     }
     setState(() {

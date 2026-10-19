@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 
 import '../data/models.dart';
 import '../data/emoji.dart';
+import 'tieba_emoji.dart';
+
+export 'tieba_emoji.dart' show TiebaEmoji;
 import '../pages/image_page.dart';
 import '../pages/video_page.dart';
 import '../pages/user_page.dart';
+import 'voice_player.dart';
 
 class UserAvatar extends StatelessWidget {
-  const UserAvatar({super.key, required this.user, this.size = 36});
+  const UserAvatar({super.key, required this.user, this.size = 40});
   final Json user;
   final double size;
   @override
@@ -92,10 +96,32 @@ class UserHeader extends StatelessWidget {
               ],
             ),
             Text(subtitle, style: Theme.of(context).textTheme.labelSmall),
+            if (showForumLevel && forumRole(user).isNotEmpty)
+              ForumRoleBadge(user: user),
           ],
         ),
       ),
     ],
+  );
+}
+
+class ForumRoleBadge extends StatelessWidget {
+  const ForumRoleBadge({super.key, required this.user});
+  final Json user;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      borderRadius: BorderRadius.circular(4),
+    ),
+    child: Text(
+      forumRole(user),
+      style: TextStyle(
+        fontSize: 10,
+        color: Theme.of(context).colorScheme.onSecondaryContainer,
+      ),
+    ),
   );
 }
 
@@ -110,7 +136,12 @@ class ForumLevelBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final level = number(user['level_id'] ?? user['user_level']);
+    final level =
+        [
+          number(user['level_id']),
+          number(user['user_level']),
+        ].where((n) => n > 0).firstOrNull ??
+        0;
     // The PB level is specific to this forum. Explicit non-followers have no badge.
     if (level <= 0 ||
         (user.containsKey('is_like') && !flag(user['is_like'])) ||
@@ -143,11 +174,6 @@ class ForumLevelBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (title.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 3),
-              child: Text(title, style: Theme.of(context).textTheme.labelSmall),
-            ),
           SizedBox(
             width: 25,
             height: 25,
@@ -226,6 +252,27 @@ class ForumLevelBadge extends StatelessWidget {
               ],
             ),
           ),
+          if (title.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(left: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: .12),
+                borderRadius: BorderRadius.circular(4),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: .10),
+                    blurRadius: 3,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.labelSmall
+                    ?.copyWith(color: color),
+              ),
+            ),
         ],
       ),
     );
@@ -236,29 +283,29 @@ String emojiUrl(Json part) {
   return emojiUrls(part).firstOrNull ?? '';
 }
 
-class TiebaEmoji extends StatelessWidget {
-  const TiebaEmoji({super.key, required this.part, this.size = 24});
-  final Json part;
-  final double size;
-  @override
-  Widget build(BuildContext context) {
-    final urls = emojiUrls(part);
-    final label = firstText([part['c'], part['text']], '表情');
-    Widget load(int index) => index >= urls.length
-        ? Text(
-            label.startsWith('[') ? label : '[$label]',
-            style: const TextStyle(fontSize: 12),
-          )
-        : Image.network(
-            urls[index],
-            width: size,
-            height: size,
-            fit: BoxFit.contain,
-            headers: const {'Referer': 'https://tieba.baidu.com/'},
-            errorBuilder: (_, _, _) => load(index + 1),
-          );
-    return Semantics(label: label, child: load(0));
+List<InlineSpan> _commentTextSpans(
+  BuildContext context,
+  Json part, {
+  required bool highlightReplyTarget,
+}) {
+  final text = firstText([part['text']]);
+  if (!highlightReplyTarget) return [TextSpan(text: text)];
+  final targetStyle = TextStyle(
+    color: Theme.of(context).colorScheme.primary,
+    fontWeight: FontWeight.w600,
+  );
+  if (number(part['type']) == 4) {
+    return [TextSpan(text: text, style: targetStyle)];
   }
+  // Some endpoints send the reply prefix as plain text instead of a type-4 user.
+  final match = RegExp(r'^(\s*回复\s+)([^:：\n]+?)(\s*[:：])').firstMatch(text);
+  if (match == null) return [TextSpan(text: text)];
+  return [
+    TextSpan(text: match[1]),
+    TextSpan(text: match[2], style: targetStyle),
+    TextSpan(text: match[3]),
+    TextSpan(text: text.substring(match.end)),
+  ];
 }
 
 class InlinePostContent extends StatelessWidget {
@@ -269,12 +316,14 @@ class InlinePostContent extends StatelessWidget {
     this.prefixColor,
     this.maxLines = 3,
     this.style,
+    this.highlightReplyTarget = false,
   });
   final List<Json> parts;
   final String prefix;
   final Color? prefixColor;
   final int maxLines;
   final TextStyle? style;
+  final bool highlightReplyTarget;
   @override
   Widget build(BuildContext context) => Text.rich(
     TextSpan(
@@ -294,8 +343,14 @@ class InlinePostContent extends StatelessWidget {
             const TextSpan(text: '[图片]')
           else if (number(part['type']) == 5)
             const TextSpan(text: '[视频]')
+          else if (number(part['type']) == 10)
+            const TextSpan(text: '[语音]')
           else if (number(part['type']) != 52)
-            TextSpan(text: firstText([part['text']])),
+            ..._commentTextSpans(
+              context,
+              part,
+              highlightReplyTarget: highlightReplyTarget,
+            ),
       ],
     ),
     maxLines: maxLines,
@@ -344,15 +399,36 @@ class PostContent extends StatelessWidget {
     this.onTextTap,
     this.videoInfo = const {},
     this.textStyle,
+    this.highlightReplyTarget = false,
   });
   final List<Json> parts;
   final VoidCallback? onTextTap;
   final Json videoInfo;
   final TextStyle? textStyle;
+  final bool highlightReplyTarget;
   @override
   Widget build(BuildContext context) {
     final widgets = <Widget>[];
     final spans = <InlineSpan>[];
+    final images = parts
+        .where(
+          (p) =>
+              [3, 20].contains(number(p['type'])) ||
+              (number(p['type']) != 2 &&
+                  number(p['type']) != 10 &&
+                  firstText([
+                    p['origin_src'],
+                    p['origin_pic'],
+                    p['image_src'],
+                    p['original'],
+                    p['big_pic'],
+                    p['small_pic'],
+                  ]).isNotEmpty),
+        )
+        .map((p) => postImageUrl(p, original: true))
+        .where((u) => u.isNotEmpty)
+        .toSet()
+        .toList();
     void flush() {
       if (spans.isEmpty) return;
       widgets.add(
@@ -377,7 +453,15 @@ class PostContent extends StatelessWidget {
       final type = number(part['type']);
       // Type 52 supplies the official client's comment bubble theme, not content.
       if (type == 52) continue;
-      if (type == 5 || part['type'] == 'video') {
+      if (type == 10) {
+        flush();
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: VoicePlayer(part: part),
+          ),
+        );
+      } else if (type == 5 || part['type'] == 'video') {
         flush();
         widgets.add(
           Padding(
@@ -403,8 +487,10 @@ class PostContent extends StatelessWidget {
             child: GestureDetector(
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) =>
-                      ImagePage(url: postImageUrl(part, original: true)),
+                  builder: (_) => ImagePage(
+                    url: postImageUrl(part, original: true),
+                    urls: images,
+                  ),
                 ),
               ),
               child: ClipRRect(
@@ -422,7 +508,13 @@ class PostContent extends StatelessWidget {
           ),
         );
       } else if ('${part['text'] ?? ''}'.isNotEmpty) {
-        spans.add(TextSpan(text: '${part['text']}'));
+        spans.addAll(
+          _commentTextSpans(
+            context,
+            part,
+            highlightReplyTarget: highlightReplyTarget,
+          ),
+        );
       } else if (type != 0) {
         spans.add(
           TextSpan(
@@ -455,13 +547,24 @@ class PostContent extends StatelessWidget {
   Widget _image(Json part) {
     final url = postImageUrl(part);
     if (url.isEmpty) return const Text('[图片地址不可用]');
-    return Image.network(
+    final image = Image.network(
       url,
+      cacheWidth: 1080,
       fit: BoxFit.contain,
       headers: const {'Referer': 'https://tieba.baidu.com/'},
       errorBuilder: (_, _, _) =>
           const Padding(padding: EdgeInsets.all(24), child: Text('图片加载失败')),
     );
+    final size = firstText([part['bsize']]).split(',');
+    final width = number(part['width']) > 0
+        ? number(part['width'])
+        : number(size.first);
+    final height = number(part['height']) > 0
+        ? number(part['height'])
+        : (size.length > 1 ? number(size[1]) : 0);
+    if (width > 0 && height > 0)
+      return AspectRatio(aspectRatio: width / height, child: image);
+    return image;
   }
 }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'app_snack_bar.dart';
 
 import 'package:flutter/material.dart';
@@ -12,10 +14,12 @@ class LikeButton extends StatefulWidget {
     required this.threadId,
     required this.data,
     this.postId = '0',
+    this.parentPostId,
     this.comment = false,
     this.iconOnly = false,
   });
   final String threadId, postId;
+  final String? parentPostId;
   final Json data;
   final bool comment;
   final bool iconOnly;
@@ -26,9 +30,11 @@ class LikeButton extends StatefulWidget {
 class _LikeButtonState extends State<LikeButton>
     with AutomaticKeepAliveClientMixin {
   @override
-  bool get wantKeepAlive => true;
+  bool get wantKeepAlive => _busy;
   bool _busy = false, _liked = false, _uncertain = false;
   int _count = 0;
+  bool _confirmedLiked = false;
+  int _confirmedCount = 0;
   @override
   void initState() {
     super.initState();
@@ -42,9 +48,13 @@ class _LikeButtonState extends State<LikeButton>
     );
     _liked =
         AuthStore.instance.isLoggedIn &&
-        (flag(agree['has_agree']) ||
-            flag(widget.data['has_agree']) ||
-            number(agree['agree_type']) == 2);
+        (agree.containsKey('has_agree')
+            ? flag(agree['has_agree'])
+            : agree.containsKey('agree_type')
+            ? number(agree['agree_type']) == 2
+            : flag(widget.data['has_agree']));
+    _confirmedLiked = _liked;
+    _confirmedCount = _count;
     _uncertain = flag(widget.data['_agree_uncertain']);
   }
 
@@ -55,7 +65,10 @@ class _LikeButtonState extends State<LikeButton>
   }
 
   Future<void> _like() async {
-    if (_busy || _uncertain) return;
+    if (_uncertain) {
+      if (!_busy) await _recover();
+      return;
+    }
     final auth = AuthStore.instance;
     if (!auth.isLoggedIn) {
       await Navigator.of(context)
@@ -64,49 +77,121 @@ class _LikeButtonState extends State<LikeButton>
       return;
     }
     final identity = auth.activeId;
+    setState(() {
+      _liked = !_liked;
+      _updateCount();
+    });
+    // Keep the last tap as the desired state, with only one request in flight.
+    if (_busy) return;
     setState(() => _busy = true);
     final api = TiebaApi();
+    updateKeepAlive();
     try {
-      await api.agree(
-        widget.threadId,
-        postId: widget.postId,
-        comment: widget.comment,
-        undo: _liked,
-      );
-      if (!mounted || auth.activeId != identity) return;
-      setState(() {
-        _count = (_count + (_liked ? -1 : 1)).clamp(0, 2147483647);
-        _liked = !_liked;
-        // Keep the confirmed result in page-owned data when this lazy row is disposed.
-        widget.data['agree'] = {
-          ...object(widget.data['agree']),
-          'agree_num': _count,
-          'has_agree': _liked ? 1 : 0,
-          'agree_type': _liked ? 2 : 0,
-        };
-        widget.data.remove('_agree_uncertain');
-      });
-    } catch (e) {
-      if (mounted) {
-        if (e is TiebaException && e.uncertain) {
-          setState(() {
-            _uncertain = true;
-            widget.data['_agree_uncertain'] = 1;
-          });
+      while (mounted && auth.activeId == identity) {
+        // Coalesce rapid taps before sending another server operation.
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+        if (!mounted ||
+            auth.activeId != identity ||
+            _liked == _confirmedLiked) {
+          break;
         }
-        ScaffoldMessenger.of(context).showAppSnackBar(
-          AppSnackBar(
-            content: Text(
-              e is TiebaException
-                  ? (e.uncertain ? '点赞结果未确认，请刷新核对后再操作' : e.message)
-                  : '点赞失败，请稍后重试',
-            ),
-          ),
+        final desired = _liked;
+        await api.agree(
+          widget.threadId,
+          postId: widget.postId,
+          comment: widget.comment,
+          undo: !desired,
         );
+        if (!mounted || auth.activeId != identity) return;
+        setState(() {
+          _confirmedCount = (_confirmedCount + (desired ? 1 : -1)).clamp(
+            0,
+            2147483647,
+          );
+          _confirmedLiked = desired;
+          _storeConfirmed();
+          _updateCount();
+        });
+      }
+    } catch (e) {
+      if (mounted && auth.activeId == identity) {
+        setState(() {
+          _liked = _confirmedLiked;
+          _count = _confirmedCount;
+          // A rejected operation can also mean our local state was stale.
+          // Reconcile before allowing another write instead of repeating it.
+          _uncertain = true;
+          widget.data['_agree_uncertain'] = 1;
+        });
+        if (e is! TiebaException || !e.uncertain) {
+          ScaffoldMessenger.of(context).showAppSnackBar(
+            AppSnackBar(
+              content: Text(e is TiebaException ? e.message : '点赞失败，请稍后重试'),
+            ),
+          );
+        }
+        await _readState(api, identity);
       }
     } finally {
       api.close();
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+        updateKeepAlive();
+      }
+    }
+  }
+
+  void _updateCount() {
+    _count =
+        (_confirmedCount + (_liked == _confirmedLiked ? 0 : (_liked ? 1 : -1)))
+            .clamp(0, 2147483647);
+  }
+
+  void _storeConfirmed() {
+    widget.data['agree'] = {
+      ...object(widget.data['agree']),
+      'agree_num': _confirmedCount,
+      'has_agree': _confirmedLiked ? 1 : 0,
+      'agree_type': _confirmedLiked ? 2 : 0,
+    };
+    widget.data['has_agree'] = _confirmedLiked ? 1 : 0;
+    widget.data.remove('_agree_uncertain');
+  }
+
+  Future<void> _readState(TiebaApi api, String identity) async {
+    try {
+      final agree = await api.agreeState(
+        widget.threadId,
+        postId: widget.postId,
+        comment: widget.comment,
+        parentPostId: widget.parentPostId,
+      );
+      if (!mounted || AuthStore.instance.activeId != identity) return;
+      setState(() {
+        widget.data['agree'] = agree;
+        widget.data.remove('_agree_uncertain');
+        _restore();
+      });
+    } catch (_) {
+      if (!mounted || AuthStore.instance.activeId != identity) return;
+      ScaffoldMessenger.of(context).showAppSnackBar(
+        const AppSnackBar(content: Text('点赞状态暂未确认，点击点赞按钮可重新同步')),
+      );
+    }
+  }
+
+  Future<void> _recover() async {
+    setState(() => _busy = true);
+    updateKeepAlive();
+    final api = TiebaApi();
+    try {
+      await _readState(api, AuthStore.instance.activeId);
+    } finally {
+      api.close();
+      if (mounted) {
+        setState(() => _busy = false);
+        updateKeepAlive();
+      }
     }
   }
 
@@ -114,27 +199,22 @@ class _LikeButtonState extends State<LikeButton>
   Widget build(BuildContext context) {
     super.build(context);
     final label = _uncertain
-        ? '请刷新核对'
+        ? '点击同步'
         : (_count > 0 ? '$_count' : (_liked ? '已赞' : '赞'));
     return Tooltip(
       message: _uncertain ? label : '${_liked ? '已赞' : '赞'} $_count',
       child: TextButton(
-        onPressed: _busy || _uncertain ? null : _like,
+        onPressed: _like,
+        style: TextButton.styleFrom(
+          splashFactory: NoSplash.splashFactory,
+          overlayColor: Colors.transparent,
+        ),
         child: FittedBox(
           fit: BoxFit.scaleDown,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _busy
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(
-                      _liked ? Icons.thumb_up : Icons.thumb_up_outlined,
-                      size: 18,
-                    ),
+              Icon(_liked ? Icons.thumb_up : Icons.thumb_up_outlined, size: 18),
               if (!widget.iconOnly || _count > 0) ...[
                 const SizedBox(width: 4),
                 Text(

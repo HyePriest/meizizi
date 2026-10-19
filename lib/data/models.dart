@@ -29,6 +29,35 @@ String author(Json user) => firstText([
   user['name'],
   user['user_name'],
 ], '吧友');
+
+String forumRole(Json user) {
+  final role = firstText([user['forum_role'], user['bawu_type']]);
+  return switch (role) {
+    'manager' || '吧主' || '大吧主' => '吧主',
+    'assist' || '小吧主' => '小吧主',
+    'voiceadmin' || '语音小编' => '语音小编',
+    'videoadmin' || '视频小编' => '视频小编',
+    'picadmin' || '图片小编' => '图片小编',
+    _ => flag(user['is_bawu']) ? '吧务' : '',
+  };
+}
+
+String postIp(Json post, Json user) {
+  String label(dynamic raw) => raw is Map
+      ? firstText([raw['ip_address'], raw['location'], raw['name']])
+      : firstText([raw]);
+  return firstText([
+    label(post['ip_address']),
+    label(post['ip_location']),
+    label(user['ip_address']),
+    label(user['ip_location']),
+    RegExp(
+      r'IP(?:属地)?\s*[:：]?\s*([^·|\n]+)',
+      caseSensitive: false,
+    ).firstMatch(plainText(post['footer']))?.group(1)?.trim(),
+  ]).replaceFirst(RegExp(r'^IP(?:属地)?\s*[:：]?\s*', caseSensitive: false), '');
+}
+
 String plainText(dynamic value) =>
     html.parseFragment('${value ?? ''}').text ?? '';
 
@@ -144,11 +173,11 @@ List<Json> contentParts(dynamic content) {
         node.attributes['alt'],
         node.attributes['title'],
       ]);
-      final emoticon =
-          src.contains('emoticon') ||
-          src.contains('/face/') ||
-          node.classes.contains('BDE_Smiley') ||
-          label.startsWith('#(');
+      final emoticon = isEmojiImage(
+        src,
+        label: label,
+        smileyClass: node.classes.contains('BDE_Smiley'),
+      );
       parts.add({'type': emoticon ? 2 : 3, 'src': src, 'c': label});
     } else if (node is dom.Element && node.localName == 'br') {
       parts.add({'type': 0, 'text': '\n'});

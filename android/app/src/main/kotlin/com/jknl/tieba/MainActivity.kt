@@ -11,6 +11,9 @@ import android.provider.MediaStore
 import android.app.Activity
 
 class MainActivity : FlutterActivity() {
+    private var voice: VoicePlayback? = null
+    override fun onPause() { voice?.stop(); super.onPause() }
+    override fun onDestroy() { voice?.stop(); super.onDestroy() }
     private var pendingSave: MethodChannel.Result? = null
     private var pendingBytes: ByteArray? = null
     private var updateRunning = false
@@ -178,10 +181,32 @@ class MainActivity : FlutterActivity() {
     }
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        voice = VoicePlayback(this)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.jknl.tieba/voice").setMethodCallHandler(voice)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.jknl.tieba/session")
             .setMethodCallHandler { call, result ->
                 val manager = CookieManager.getInstance()
                 when (call.method) {
+                    "openUpdateLink" -> {
+                        val uri = android.net.Uri.parse(call.argument<String>("url") ?: "")
+                        if (uri.scheme != "https" || uri.host != "github.com" ||
+                            !(uri.path == "/HyePriest/tieba" || uri.path.orEmpty().startsWith("/HyePriest/tieba/"))) {
+                            result.error("INVALID_URL", "项目地址无效", null)
+                        } else {
+                            try {
+                                startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE))
+                                result.success(null)
+                            } catch (_: Exception) { result.error("OPEN_FAILED", "无法打开浏览器", null) }
+                        }
+                    }
+                    "openOfficialTieba" -> {
+                        try {
+                            val intent = packageManager.getLaunchIntentForPackage("com.baidu.tieba")
+                                ?: throw IllegalStateException()
+                            startActivity(intent)
+                            result.success(null)
+                        } catch (_: Exception) { result.error("OFFICIAL_APP_MISSING", "请使用官方贴吧客户端发送私信", null) }
+                    }
                     "downloadUpdate" -> downloadUpdate(call.argument<String>("url") ?: "", result)
                     "installUpdate" -> installUpdate(result)
                     "shareText" -> {
