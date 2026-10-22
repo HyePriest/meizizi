@@ -1,88 +1,94 @@
 <div align="center">
 
-# 贴吧
+# 美滋滋 · meizizi
 
-**让阅读回到帖子本身。**
+**把熟悉的讨论，读出一点新花样。**
 
-一个以浏览与讨论为中心的第三方贴吧 Android 客户端。<br>
-紧凑的界面、熟悉的表情，以及下次打开时仍然记得的阅读位置。
+一款以阅读和讨论为中心的 Flutter Android 客户端。  
+更自在的配色、更轻快的界面，以及真的能向上「盖楼」的阅读方式。
 
-<p>
-  <a href="https://github.com/HyePriest/tieba/releases/latest"><img src="https://img.shields.io/github/v/release/HyePriest/tieba?style=flat-square&amp;color=2563eb&amp;label=Release" alt="Latest release"></a>
-  <a href="https://github.com/HyePriest/tieba/releases"><img src="https://img.shields.io/github/downloads/HyePriest/tieba/total?style=flat-square&amp;color=2563eb&amp;label=Downloads" alt="Downloads"></a>
-  <img src="https://img.shields.io/badge/Android-ARM64-16a34a?style=flat-square&amp;logo=android&amp;logoColor=white" alt="Android ARM64">
-  <img src="https://img.shields.io/badge/Built_with-Flutter-02569B?style=flat-square&amp;logo=flutter&amp;logoColor=white" alt="Built with Flutter">
-</p>
+[![Flutter](https://img.shields.io/badge/Flutter-Android-02569B?logo=flutter&logoColor=white)](https://flutter.dev/)
+[![Platform](https://img.shields.io/badge/Android-ARM64-3DDC84?logo=android&logoColor=white)](https://github.com/HyePriest/meizizi/releases)
+[![Preview](https://img.shields.io/badge/Version-1.0.0--dev.1-8A63D2)](https://github.com/HyePriest/meizizi/releases)
+[![GitHub Stars](https://img.shields.io/github/stars/HyePriest/meizizi?style=flat&logo=github&label=Stars)](https://github.com/HyePriest/meizizi/stargazers)
+[![GitHub Release](https://img.shields.io/github/v/release/HyePriest/meizizi?include_prereleases&label=Release)](https://github.com/HyePriest/meizizi/releases)
 
-<p>
-  <a href="https://github.com/HyePriest/tieba/releases/latest"><img src="https://img.shields.io/badge/下载_APK-2563eb?style=for-the-badge&amp;logo=android&amp;logoColor=white" alt="下载 APK"></a>
-  <a href="https://github.com/HyePriest/tieba/issues"><img src="https://img.shields.io/badge/反馈问题-18181b?style=for-the-badge&amp;logo=github&amp;logoColor=white" alt="反馈问题"></a>
-</p>
-
-[功能一览](#功能一览) · [安装与更新](#安装与更新) · [构建](#构建) · [更新记录](CHANGELOG.md)
+**[下载应用](https://github.com/HyePriest/meizizi/releases)** · **[反馈问题](https://github.com/HyePriest/meizizi/issues)** · **[更新记录](CHANGELOG.md)**
 
 </div>
 
 ---
 
-## 读到哪里，就从哪里继续
+## 认识美滋滋
 
-从首页推荐、关注的吧或搜索进入帖子，按楼层阅读、切换热度排序，也可以只看楼主。楼中楼在评论下方预览，展开后查看完整讨论；需要回看时，直接跳转到目标楼层。
+美滋滋是一款用于浏览百度贴吧内容的非官方 Android 客户端。你可以发现感兴趣的讨论、阅读帖子、参与回复，也可以决定应用的颜色和阅读方式。
 
-返回列表保留浏览位置，重新打开帖子恢复上次阅读的楼层与偏移。首页的「继续阅读」、浏览历史和帖子收藏，让长帖可以分几次读完。
+新版围绕**阅读体验与交互细节**重新设计首页和帖子页面，并加入自由调色、动态效果与实验性的「盖楼模式」。
 
-## 熟悉的内容，清楚地呈现
+## 盖楼模式：从一楼往上盖
 
-正文、图片、经典贴吧表情和楼中楼使用一致的内容展示。图片支持左右翻页、双指缩放与保存原图；视频点击后加载，语音可以直接播放。
+让「盖楼」成为真正的阅读方式：**一楼在底部，二楼、三楼依次向上堆叠**。楼层像建筑一样逐层升高，而每层内部的文字依然按正常方向阅读。
 
-吧内等级保留数字与自定义名称，吧务身份、楼主标记与 IP 信息就近显示。白色、黑色及跟随系统三种主题，让界面适应不同的阅读环境。
+- 在「我的 → 设置 → 盖楼模式」中开启，默认关闭，随时切回常规布局。
+- 长正文和多图内容可以通过正常方向的全文阅读面板查看；楼中楼详情保留常规阅读顺序。
+- 屏蔽内容时，楼层以拆砖、收拢的方式退场；普通模式保留碎裂效果。
 
-## 把常用操作放在手边
+> 盖楼模式目前是实验功能，长帖滚动、位置恢复和部分动画细节仍在完善。
 
-点赞、文字回复、收藏与分享都在阅读页完成。回复草稿按账号和回复对象分别保存在本机，离开编辑页后仍可继续写。
+## 界面，也有自己的性格
 
-「我的吧」集中展示已关注的吧，支持单吧签到与一键签到；「我的」汇集个人发帖、回帖、收藏、通知和私信。屏蔽作者、吧名或吧名关键词后，列表按自己的偏好展示内容。
+**洪水式切换**  
+推荐与热榜之间采用跟随手势的液体过渡效果；反向滑动时，切换进度也能自然撤回。
 
-## 功能一览
+**自由调色**  
+分别调整页面背景与强调色，不再局限于黑白两种主题。支持色相微调、数值输入与 HEX 色值，预览满意后再保存。
+
+**经典表情图标**  
+桌面图标可以按星期轮换不同的经典表情。部分启动器可能因为缓存而延迟更新。
+
+**细节动画**  
+分享操作加入弓箭动效；屏蔽内容时使用与阅读模式相匹配的反馈动画。菜单、身份标签、等级显示和帖子排版也经过统一调整。
+
+## 日常使用
 
 | 场景 | 支持内容 |
 | --- | --- |
-| 浏览与发现 | 首页推荐、吧与帖子搜索、最新回复／最新发布／热门／精华分类 |
-| 帖子阅读 | 楼层与热度排序、只看楼主、楼中楼预览、楼层跳转、阅读位置恢复 |
-| 图片与媒体 | 图片浏览与原图保存、点击播放视频、帖子及楼中楼语音播放、本地表情资源 |
-| 讨论与收藏 | 文字回复、本地草稿、点赞与取消点赞、帖子收藏、系统分享、举报入口 |
-| 账号与社区 | 多账号切换、关注与取消关注、单吧及一键签到、用户公开主页 |
-| 消息与偏好 | 回复／点赞／@ 通知、私信记录、作者及吧屏蔽、关键词过滤、黑白主题 |
+| 浏览与发现 | 首页推荐、贴吧热议榜、话题热门与最新讨论、分类搜索 |
+| 帖子阅读 | 楼层排序、楼主筛选、楼层跳转、楼中楼、阅读位置恢复 |
+| 图片与媒体 | 图片浏览、缩放与原图保存、视频播放、语音播放 |
+| 参与讨论 | 文字回复、本地草稿、点赞、收藏、生成帖子分享图 |
+| 账号与关注 | 官方网页登录、多账号切换、公开主页、关注的吧、签到 |
+| 消息与偏好 | 回复与点赞通知、@ 消息、私信查看、作者和吧屏蔽、关键词过滤 |
 
-私信支持原生查看文字、图片和语音，发送入口转交官方客户端。当前暂不支持新发主题帖、回复图片上传、语音发送及完整离线阅读。部分分类、热度排序和账号操作取决于贴吧接口及登录状态。
+首页支持搜索框随滚动方向收起或显示；「我的吧」集中展示关注的吧、最近浏览与继续阅读。
 
-## 安装与更新
+**目前的功能边界：**暂不支持新发主题帖、回复图片上传、语音发送、原生私信发送及完整离线阅读。私信可以查看文字、图片和语音，发送入口交由官方客户端处理。部分功能受登录状态、安全验证及接口可用性影响。
 
-1. 打开 [最新版本](https://github.com/HyePriest/tieba/releases/latest)，在 **Assets** 中下载名称含 `arm64` 的 `.apk` 文件。
-2. 在 Android 手机上打开安装包，按系统提示允许安装。GitHub 自动生成的 Source code 压缩包用于查看源码。
-3. 已安装本项目旧版时可直接覆盖更新，保留现有数据。应用内也可从「我的 → 设置 → 版本更新」检查、下载并安装新版。
+## 安装
 
-当前提供 ARM64 安装包。应用包名为 `com.jknl.tieba`。
+1. 前往 **[Releases](https://github.com/HyePriest/meizizi/releases)**，打开最新的预览版本。
+2. 在 **Assets** 中下载文件名包含 `arm64` 的 `.apk` 文件。
+3. 在 ARM64 Android 设备上安装。GitHub 自动生成的 *Source code* 压缩包不是安装包。
+
+当前主要提供 Android ARM64 安装包；预览版请以 Releases 页面为准，应用内更新不一定提示预发布版本。更新前建议保存重要草稿，若出现签名冲突，请核对安装包来源。
 
 ## 登录与数据
 
-通过应用内的百度官方网页登录，亦提供 QQ 授权入口；短信、验证码及安全验证按官方页面提示完成。
+- 通过应用内打开的官方网页完成登录及必要的验证码、安全验证。
+- 账号凭据使用系统安全存储保存在本机；密码和验证码仅在官方页面输入，应用不另行保存。
+- 浏览记录、阅读位置、屏蔽设置和未发送的回复草稿保存在本机；Android 云备份已关闭。
+- 内容请求连接百度相关服务，版本检查访问本项目的 GitHub Releases。
 
-- 登录凭据通过系统安全存储保存在本机，支持多个账号分别保存和切换。
-- 浏览历史、阅读位置、屏蔽设置和未发送的回复草稿保存在本机。
-- 贴吧请求直接连接百度服务；检查更新读取本项目的 GitHub Releases。
-- 密码与验证码仅在官方登录页面输入，应用不另行保存。Android 云备份已关闭。
+## 从源码构建
 
-## 构建
-
-使用 Flutter / Dart 与 Android SDK，依赖版本见 [pubspec.yaml](pubspec.yaml) 和 [pubspec.lock](pubspec.lock)。
+需要 Flutter / Dart、Android SDK 与 JDK。实际依赖版本请参考 [`pubspec.yaml`](pubspec.yaml) 和 [`pubspec.lock`](pubspec.lock)。
 
 ```sh
 flutter pub get
 flutter run
 ```
 
-生成 ARM64 release 安装包前，参照 [签名配置示例](android/key.properties.example) 创建本机 `android/key.properties`，并配置自己的签名证书：
+构建 ARM64 Release 安装包之前，请参照 [`android/key.properties.example`](android/key.properties.example) 配置本机签名证书：
 
 ```sh
 flutter build apk --release --target-platform android-arm64 \
@@ -90,10 +96,12 @@ flutter build apk --release --target-platform android-arm64 \
   --extra-gen-snapshot-options=--strip
 ```
 
-输出位于 `build/app/outputs/flutter-apk/app-release.apk`。签名配置与证书不应提交到仓库；自行构建的不同签名版本不能直接覆盖官方 Release 安装包。
+APK 默认输出到 `build/app/outputs/flutter-apk/app-release.apk`。不要把签名证书或签名配置提交到仓库；不同签名的安装包通常无法直接覆盖安装。
 
-## 致谢
+## 反馈与致谢
 
-协议资料参考 [Tiebanana](https://github.com/Aobanana-chan/Tiebanana)、[aiotieba](https://github.com/lumina37/aiotieba) 与 TiebaLite 等社区项目，依赖与资源说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+发现问题，可以到 **[Issues](https://github.com/HyePriest/meizizi/issues)** 反馈，附上设备型号、应用版本、复现步骤；阅读问题最好附公开帖子链接。请勿提交 Cookie、登录凭据或私人聊天记录。
 
-本项目是第三方客户端，与百度官方无隶属关系。贴吧商标、表情及用户内容归各自权利人所有。
+协议与实现参考了 [Tiebanana](https://github.com/Aobanana-chan/Tiebanana)、[aiotieba](https://github.com/lumina37/aiotieba) 及 TiebaLite 等社区项目。第三方依赖与素材信息见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+
+美滋滋是非官方客户端，与百度官方不存在隶属或合作关系。贴吧商标、表情及用户内容归各自权利人所有。
