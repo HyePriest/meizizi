@@ -9,7 +9,7 @@
 
 [![Flutter](https://img.shields.io/badge/Flutter-Android-02569B?logo=flutter&logoColor=white)](https://flutter.dev/)
 [![Platform](https://img.shields.io/badge/Android-ARM64-3DDC84?logo=android&logoColor=white)](https://github.com/HyePriest/meizizi/releases)
-[![Preview](https://img.shields.io/badge/Version-1.0.0--dev.1-8A63D2)](https://github.com/HyePriest/meizizi/releases)
+[![Downloads](https://img.shields.io/github/downloads/HyePriest/meizizi/total?label=Downloads)](https://github.com/HyePriest/meizizi/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/HyePriest/meizizi?style=flat&logo=github&label=Stars)](https://github.com/HyePriest/meizizi/stargazers)
 [![GitHub Release](https://img.shields.io/github/v/release/HyePriest/meizizi?include_prereleases&label=Release)](https://github.com/HyePriest/meizizi/releases)
 
