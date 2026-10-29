@@ -19,7 +19,7 @@ class UserConnectionsPage extends StatefulWidget {
 class _UserConnectionsPageState extends State<UserConnectionsPage> {
   final _api = TiebaApi();
   final List<Json> _items = [];
-  bool _busy = false, _more = true;
+  bool _busy = false, _more = true, _retryReset = true;
   int _page = 0;
   String? _error;
   bool get _forums => widget.kind == UserConnections.forums;
@@ -37,6 +37,7 @@ class _UserConnectionsPageState extends State<UserConnectionsPage> {
 
   Future<void> _load({bool reset = false}) async {
     if (_busy) return;
+    _retryReset = reset;
     setState(() {
       _busy = true;
       _error = null;
@@ -121,7 +122,7 @@ class _UserConnectionsPageState extends State<UserConnectionsPage> {
                       if (_error != null) ...[
                         Text(_error!, textAlign: TextAlign.center),
                         TextButton(
-                          onPressed: () => _load(reset: _items.isEmpty),
+                          onPressed: () => _load(reset: _retryReset),
                           child: const Text('重试'),
                         ),
                       ] else if (_more)

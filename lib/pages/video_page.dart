@@ -1,7 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+
+import '../data/app_webview.dart';
+
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 class VideoPage extends StatefulWidget {
   const VideoPage({super.key, required this.url});
@@ -21,6 +24,11 @@ class _VideoPageState extends State<VideoPage> with WidgetsBindingObserver {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
+          onPageFinished: (_) => _controller
+              .runJavaScript(
+                'document.querySelectorAll("video").forEach(v=>{if(!document.hidden)v.play().catch(()=>{});})',
+              )
+              .catchError((_) {}),
           onNavigationRequest: (request) =>
               ['https', 'http'].contains(Uri.tryParse(request.url)?.scheme)
               ? NavigationDecision.navigate
@@ -32,7 +40,15 @@ class _VideoPageState extends State<VideoPage> with WidgetsBindingObserver {
           },
         ),
       );
-    _load();
+    _configureAndLoad();
+  }
+
+  Future<void> _configureAndLoad() async {
+    final platform = _controller.platform;
+    if (platform is AndroidWebViewController) {
+      await platform.setMediaPlaybackRequiresUserGesture(false);
+    }
+    if (mounted) _load();
   }
 
   void _load() {
@@ -44,7 +60,7 @@ class _VideoPageState extends State<VideoPage> with WidgetsBindingObserver {
       final source = const HtmlEscape(HtmlEscapeMode.attribute)
           .convert(widget.url);
       _controller.loadHtmlString(
-        '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#000}video{width:100%;height:100vh}</style><video controls playsinline preload="none" src="$source"></video>',
+        '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#000}video{width:100%;height:100vh}</style><video controls autoplay playsinline preload="auto" src="$source"></video>',
         baseUrl: 'https://tieba.baidu.com/',
       );
     } else {
@@ -73,22 +89,31 @@ class _VideoPageState extends State<VideoPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('视频')),
-    body: _error == null
-        ? WebViewWidget(controller: _controller)
-        : Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(_error!),
-                TextButton(
-                  onPressed: () {
-                    setState(() => _error = null);
-                    _load();
-                  },
-                  child: const Text('重试'),
+    body: Stack(
+      children: [
+        Positioned.fill(child: WebViewWidget(controller: _controller)),
+        if (_error != null)
+          Positioned.fill(
+            child: ColoredBox(
+              color: Theme.of(context).colorScheme.surface,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_error!),
+                    TextButton(
+                      onPressed: () {
+                        setState(() => _error = null);
+                        _load();
+                      },
+                      child: const Text('重试'),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
+      ],
+    ),
   );
 }

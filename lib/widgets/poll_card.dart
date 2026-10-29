@@ -103,7 +103,10 @@ class _PollCardState extends State<PollCard> {
   Widget build(BuildContext context) {
     final options = objects(widget.poll['options']);
     if (options.isEmpty) return const SizedBox.shrink();
-    final total = number(widget.poll['total_poll']);
+    final total = options.fold<int>(
+      0,
+      (sum, option) => sum + number(option['num'] ?? option['vote_num']),
+    );
     final users = number(widget.poll['total_num']);
     final showResults = _showResults || _voted;
     final enabled = !_busy && !_refreshing && !_voted && !_ended && !_uncertain;
@@ -134,8 +137,8 @@ class _PollCardState extends State<PollCard> {
                     ? (votes * 100 / total).toStringAsFixed(1)
                     : '0';
                 final selected = _selected.contains(id);
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
+                final tile = ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                   leading: Icon(
                     _multi
                         ? (selected
@@ -186,6 +189,33 @@ class _PollCardState extends State<PollCard> {
                           });
                         }
                       : null,
+                );
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Stack(
+                      children: [
+                        if (showResults)
+                          Positioned.fill(
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: FractionallySizedBox(
+                                widthFactor: total > 0 ? votes / total : 0,
+                                heightFactor: 1,
+                                child: ColoredBox(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withValues(alpha: .22),
+                                ),
+                              ),
+                            ),
+                          ),
+                        tile,
+                      ],
+                    ),
+                  ),
                 );
               },
             ),

@@ -205,35 +205,44 @@ class _MessagesListState extends State<_MessagesList>
       onRefresh: () => _load(reset: true),
       child: ListenableBuilder(
         listenable: LocalStore.instance,
-        builder: (context, _) => ListView(
-          padding: const EdgeInsets.all(12),
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: [
-            for (final item in _items)
-              if (!LocalStore.instance.userBlocked(_user(item))) _card(item),
-            if (_error != null) ...[
-              Text(_error!, textAlign: TextAlign.center),
-              TextButton(
-                onPressed: () => _load(reset: _retryReset),
-                child: const Text('重试'),
-              ),
-            ],
-            if (_busy)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: CircularProgressIndicator(),
-                ),
-              )
-            else if (_more && _error == null)
-              TextButton(onPressed: _load, child: const Text('加载更多'))
-            else if (_items.isEmpty && _error == null)
-              const Padding(
-                padding: EdgeInsets.all(40),
-                child: Center(child: Text('暂无通知')),
-              ),
-          ],
-        ),
+        builder: (context, _) {
+          final visible = _items
+              .where((item) => !LocalStore.instance.userBlocked(_user(item)))
+              .toList();
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            physics: const AlwaysScrollableScrollPhysics(),
+            itemCount: visible.length + 1,
+            itemBuilder: (context, index) {
+              if (index < visible.length) return _card(visible[index]);
+              return Column(
+                children: [
+                  if (_error != null) ...[
+                    Text(_error!, textAlign: TextAlign.center),
+                    TextButton(
+                      onPressed: () => _load(reset: _retryReset),
+                      child: const Text('重试'),
+                    ),
+                  ],
+                  if (_busy)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  else if (_more && _error == null)
+                    TextButton(onPressed: _load, child: const Text('加载更多'))
+                  else if (_items.isEmpty && _error == null)
+                    const Padding(
+                      padding: EdgeInsets.all(40),
+                      child: Center(child: Text('暂无通知')),
+                    ),
+                ],
+              );
+            },
+          );
+        },
       ),
     );
   }

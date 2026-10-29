@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="LaunchThemeMonday" parent="@style/LaunchTheme">
+        <item name="android:windowBackground">@drawable/launch_background_monday</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_monday_safe</item>
+        <item name="android:windowSplashScreenBackground">#F7F8FA</item>
+    </style>
+    <style name="LaunchThemeTuesday" parent="@style/LaunchTheme">
+        <item name="android:windowBackground">@drawable/launch_background_tuesday</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_tuesday_safe</item>
+        <item name="android:windowSplashScreenBackground">#F7F8FA</item>
+    </style>
+    <style name="LaunchThemeWednesday" parent="@style/LaunchTheme">
+        <item name="android:windowBackground">@drawable/launch_background_wednesday</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_wednesday_safe</item>
+        <item name="android:windowSplashScreenBackground">#F7F8FA</item>
+    </style>
+    <style name="LaunchThemeThursday" parent="@style/LaunchTheme">
+        <item name="android:windowBackground">@drawable/launch_background_thursday</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_thursday_safe</item>
+        <item name="android:windowSplashScreenBackground">#F7F8FA</item>
+    </style>
+    <style name="LaunchThemeFriday" parent="@style/LaunchTheme">
+        <item name="android:windowBackground">@drawable/launch_background_friday</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_friday_safe</item>
+        <item name="android:windowSplashScreenBackground">#F7F8FA</item>
+    </style>
+    <style name="LaunchThemeSaturday" parent="@style/LaunchTheme">
+        <item name="android:windowBackground">@drawable/launch_background_saturday</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_saturday_safe</item>
+        <item name="android:windowSplashScreenBackground">#F7F8FA</item>
+    </style>
+    <style name="LaunchThemeSunday" parent="@style/LaunchTheme">
+        <item name="android:windowBackground">@drawable/launch_background_sunday</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_sunday_safe</item>
+        <item name="android:windowSplashScreenBackground">#F7F8FA</item>
+    </style>
+</resources>

@@ -25,7 +25,7 @@ class _UserPageState extends State<UserPage> {
   final _api = TiebaApi();
   Json _user = {};
   List<Json> _posts = [];
-  bool _busy = false, _more = true;
+  bool _busy = false, _more = true, _retryReset = true;
   int _page = 0;
   String? _error;
   void _openConnections(UserConnections kind) {
@@ -53,26 +53,27 @@ class _UserPageState extends State<UserPage> {
 
   Future<void> _load({bool reset = false}) async {
     if (_busy) return;
+    _retryReset = reset;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
+      var user = _user;
       if (reset) {
         final result = await _api.userProfile(widget.user);
         if (!mounted) return;
-        setState(() {
-          _user = {...widget.user, ...object(result.data['user'])};
-          _posts = [];
-          _page = 0;
-        });
+        user = {...widget.user, ...object(result.data['user'])};
       }
-      final uid = firstText([_user['id'], _user['user_id']]);
+      final uid = firstText([user['id'], user['user_id']]);
       if (uid.isEmpty || uid == '0') throw const TiebaException('暂时无法获取该用户的主页');
-      final result = await _api.userPosts(uid, _page + 1);
+      final page = reset ? 1 : _page + 1;
+      final result = await _api.userPosts(uid, page);
       if (!mounted) return;
       final incoming = objects(result.data['post_list']);
       setState(() {
+        _user = user;
+        if (reset) _posts = [];
         final seen = _posts
             .map((p) => firstText([p['thread_id'], p['tid'], p['id']]))
             .toSet();
@@ -81,7 +82,7 @@ class _UserPageState extends State<UserPage> {
             (p) => seen.add(firstText([p['thread_id'], p['tid'], p['id']])),
           ),
         );
-        _page++;
+        _page = page;
         _more = result.data.containsKey('has_more')
             ? flag(result.data['has_more'])
             : incoming.length >= 20;
@@ -194,7 +195,7 @@ class _UserPageState extends State<UserPage> {
                 children: [
                   Text(_error!),
                   TextButton(
-                    onPressed: () => _load(reset: _page == 0),
+                    onPressed: () => _load(reset: _retryReset),
                     child: const Text('重试'),
                   ),
                 ],

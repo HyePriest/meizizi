@@ -20,6 +20,7 @@ android {
     namespace = "com.jknl.tieba"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
+    testBuildType = "release"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -28,6 +29,8 @@ android {
 
     defaultConfig {
         applicationId = "com.jknl.tieba"
+        ndk { abiFilters += "arm64-v8a" }
+        testInstrumentationRunner = "com.jknl.tieba.WeeklyIconsTest"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

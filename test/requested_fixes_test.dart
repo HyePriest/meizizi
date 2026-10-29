@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tieba/data/post_protocol.dart';
 import 'package:tieba/data/models.dart';
+import 'package:tieba/data/emoji.dart';
 import 'package:tieba/pages/profile_page.dart';
 import 'package:tieba/widgets/post_widgets.dart';
 
@@ -16,10 +17,10 @@ void main() {
         'src': 'https://tb2.bdstatic.com/tb/editor/images/client/image_emoticon.png',
       },
     ]) {
-      expect(emojiUrl(part), endsWith('/image_emoticon1.png'));
+      expect(resolveEmoji(part).assets.first, endsWith('/image_emoticon1.png'));
     }
     expect(
-      emojiUrl({'text': 'image_emoticon25'}),
+      resolveEmoji({'text': 'image_emoticon25'}).assets.first,
       endsWith('/image_emoticon25.png'),
     );
   });
@@ -64,7 +65,10 @@ void main() {
     expect(find.text('[图片]'), findsNothing);
     expect(find.byType(Image), findsOneWidget);
     final image = tester.widget<Image>(find.byType(Image));
-    expect((image.image as NetworkImage).url, url);
+    expect(
+      ((image.image as ResizeImage).imageProvider as NetworkImage).url,
+      url,
+    );
   });
   test('image addresses skip empty and non-URL placeholder fields', () {
     expect(
@@ -98,9 +102,9 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(home: Scaffold(body: ProfilePage())),
       );
-      expect(find.text('我的发帖'), findsOneWidget);
-      expect(find.text('我的回帖'), findsOneWidget);
-      expect(find.text('我的收藏'), findsOneWidget);
+      expect(find.text('发帖'), findsOneWidget);
+      expect(find.text('回帖'), findsOneWidget);
+      expect(find.text('收藏'), findsOneWidget);
       expect(find.text('账号管理'), findsNothing);
       expect(find.text('内容偏好'), findsNothing);
       expect(tester.takeException(), isNull);

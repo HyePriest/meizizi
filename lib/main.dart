@@ -1,19 +1,33 @@
 import 'package:flutter/material.dart';
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:media_kit/media_kit.dart';
 
 import 'pages/home_page.dart';
 
 import 'data/auth_store.dart';
 import 'data/local_store.dart';
 import 'data/app_update.dart';
+import 'data/theme_colors.dart';
+import 'data/app_webview.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await AuthStore.instance.restore();
-  await LocalStore.instance.restore();
+  if (Platform.isWindows) {
+    MediaKit.ensureInitialized();
+    try {
+      await DesktopWebSession.initialize();
+    } catch (error) {
+      DesktopWebSession.initializationError = error;
+    }
+  }
+  await Future.wait([
+    AuthStore.instance.restore(),
+    LocalStore.instance.restore(),
+  ]);
   runApp(const TiebaApp());
   unawaited(AppUpdate.instance.check());
 }
@@ -25,49 +39,74 @@ class TiebaApp extends StatefulWidget {
 }
 
 class _TiebaAppState extends State<TiebaApp> {
-  late String _theme;
+  late int _backgroundColor;
+  late bool _backgroundFollowsSystem;
+  late int _themeColor;
+  late int _buttonColor;
   @override
   void initState() {
     super.initState();
-    _theme = LocalStore.instance.themePreference;
+    _backgroundColor = LocalStore.instance.backgroundColor;
+    _backgroundFollowsSystem = LocalStore.instance.backgroundFollowsSystem;
+    _themeColor = LocalStore.instance.themeColor;
+    _buttonColor = LocalStore.instance.buttonColor;
     LocalStore.instance.addListener(_changed);
+    LocalStore.instance.appearanceRevision.addListener(_changed);
   }
 
   void _changed() {
-    final next = LocalStore.instance.themePreference;
-    if (_theme != next) setState(() => _theme = next);
+    final background = LocalStore.instance.backgroundColor;
+    final followSystem = LocalStore.instance.backgroundFollowsSystem;
+    final color = LocalStore.instance.themeColor;
+    final button = LocalStore.instance.buttonColor;
+    if (_backgroundColor != background ||
+        _backgroundFollowsSystem != followSystem ||
+        _themeColor != color ||
+        _buttonColor != button) {
+      setState(() {
+        _backgroundColor = background;
+        _backgroundFollowsSystem = followSystem;
+        _themeColor = color;
+        _buttonColor = button;
+      });
+    }
   }
 
   @override
   void dispose() {
     LocalStore.instance.removeListener(_changed);
+    LocalStore.instance.appearanceRevision.removeListener(_changed);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    themeMode: switch (_theme) {
-      'light' => ThemeMode.light,
-      'dark' => ThemeMode.dark,
-      _ => ThemeMode.system,
-    },
-    title: '贴吧',
+    themeMode: _backgroundFollowsSystem ? ThemeMode.system : ThemeMode.light,
+    themeAnimationDuration: Duration.zero,
+    title: '美滋滋',
     debugShowCheckedModeBanner: false,
     locale: const Locale('zh', 'CN'),
     supportedLocales: const [Locale('zh', 'CN')],
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
-    theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff246BCE)),
-      scaffoldBackgroundColor: const Color(0xffF7F8FA),
-      useMaterial3: true,
-    ),
-    darkTheme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xff246BCE),
-        brightness: Brightness.dark,
+    theme: appTheme(
+      Color(_themeColor),
+      !_backgroundFollowsSystem &&
+              Color(_backgroundColor).computeLuminance() <= .179
+          ? Brightness.dark
+          : Brightness.light,
+      background: Color(
+        _backgroundFollowsSystem ? 0xffffffff : _backgroundColor,
       ),
-      useMaterial3: true,
+      button: Color(_buttonColor),
     ),
+    darkTheme: _backgroundFollowsSystem
+        ? appTheme(
+            Color(_themeColor),
+            Brightness.dark,
+            background: Colors.black,
+            button: Color(_buttonColor),
+          )
+        : null,
     home: const HomePage(),
   );
 }

@@ -1,10 +1,12 @@
+import '../data/platform_session.dart';
+import '../widgets/image_gallery.dart';
 import '../widgets/app_snack_bar.dart';
+import '../widgets/reliable_image.dart';
 
 import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 class ImagePage extends StatefulWidget {
@@ -18,9 +20,7 @@ class ImagePage extends StatefulWidget {
 class _ImagePageState extends State<ImagePage> {
   final _client = http.Client();
   late final List<String> _images;
-  late final PageController _pages;
   late int _index;
-  bool _zoomed = false;
   String get _url => _images[_index];
   bool _saving = false;
   @override
@@ -30,12 +30,10 @@ class _ImagePageState extends State<ImagePage> {
         .toSet()
         .toList();
     _index = _images.indexOf(widget.url).clamp(0, _images.length - 1);
-    _pages = PageController(initialPage: _index);
   }
 
   @override
   void dispose() {
-    _pages.dispose();
     _client.close();
     super.dispose();
   }
@@ -79,7 +77,7 @@ class _ImagePageState extends State<ImagePage> {
           : '';
       if (mime.isEmpty) throw Exception('服务器未返回可保存的图片');
       final extension = mime == 'image/jpeg' ? 'jpg' : mime.split('/').last;
-      final saved = await const MethodChannel('com.jknl.tieba/session')
+      final saved = await const PlatformSession()
           .invokeMethod<bool>('saveImage', {
             'bytes': content,
             'mime': mime,
@@ -120,83 +118,15 @@ class _ImagePageState extends State<ImagePage> {
         ),
       ],
     ),
-    body: PageView.builder(
-      controller: _pages,
+    body: ImageGallery(
+      initialPage: _index,
       itemCount: _images.length,
-      physics: _zoomed ? const NeverScrollableScrollPhysics() : null,
-      onPageChanged: (index) => setState(() {
-        _index = index;
-        _zoomed = false;
-      }),
-      itemBuilder: (_, index) => _GalleryImage(
-        key: ValueKey(_images[index]),
-        url: _images[index],
-        onZoom: (value) {
-          if (mounted && index == _index && value != _zoomed)
-            setState(() => _zoomed = value);
-        },
-      ),
-    ),
-  );
-}
-
-class _GalleryImage extends StatefulWidget {
-  const _GalleryImage({super.key, required this.url, required this.onZoom});
-  final String url;
-  final ValueChanged<bool> onZoom;
-  @override
-  State<_GalleryImage> createState() => _GalleryImageState();
-}
-
-class _GalleryImageState extends State<_GalleryImage> {
-  final _transform = TransformationController();
-  Offset _tap = Offset.zero;
-  @override
-  void initState() {
-    super.initState();
-    _transform.addListener(
-      () => widget.onZoom(_transform.value.getMaxScaleOnAxis() > 1.01),
-    );
-  }
-
-  @override
-  void dispose() {
-    _transform.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) => GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onDoubleTapDown: (details) => _tap = details.localPosition,
-      onDoubleTap: () =>
-          _transform.value = _transform.value.getMaxScaleOnAxis() > 1.01
-          ? Matrix4.identity()
-          : (Matrix4.diagonal3Values(3, 3, 1)
-              ..setTranslationRaw(-2 * _tap.dx, -2 * _tap.dy, 0)),
-      child: InteractiveViewer(
-        transformationController: _transform,
-        minScale: 1,
-        maxScale: 8,
-        panEnabled: _transform.value.getMaxScaleOnAxis() > 1.01,
-        onInteractionEnd: (_) {
-          if (mounted) setState(() {});
-        },
-        child: SizedBox(
-          width: constraints.maxWidth,
-          height: constraints.maxHeight,
-          child: Image.network(
-            widget.url,
-            headers: const {'Referer': 'https://tieba.baidu.com/'},
-            fit: BoxFit.contain,
-            loadingBuilder: (_, child, progress) => progress == null
-                ? child
-                : const Center(child: CircularProgressIndicator()),
-            errorBuilder: (_, _, _) => const Center(
-              child: Text('图片加载失败', style: TextStyle(color: Colors.white)),
-            ),
-          ),
+      onPageChanged: (index) => setState(() => _index = index),
+      itemBuilder: (_, index) => ReliableImage(
+        urls: [_images[index]],
+        fit: BoxFit.contain,
+        fallback: const Center(
+          child: Text('图片加载失败', style: TextStyle(color: Colors.white)),
         ),
       ),
     ),

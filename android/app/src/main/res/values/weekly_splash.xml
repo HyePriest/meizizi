@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="LaunchThemeMonday" parent="@style/LaunchTheme">
+        <item name="android:windowBackground">@drawable/launch_background_monday</item>
+    </style>
+    <style name="LaunchThemeTuesday" parent="@style/LaunchTheme">
+        <item name="android:windowBackground">@drawable/launch_background_tuesday</item>
+    </style>
+    <style name="LaunchThemeWednesday" parent="@style/LaunchTheme">
+        <item name="android:windowBackground">@drawable/launch_background_wednesday</item>
+    </style>
+    <style name="LaunchThemeThursday" parent="@style/LaunchTheme">
+        <item name="android:windowBackground">@drawable/launch_background_thursday</item>
+    </style>
+    <style name="LaunchThemeFriday" parent="@style/LaunchTheme">
+        <item name="android:windowBackground">@drawable/launch_background_friday</item>
+    </style>
+    <style name="LaunchThemeSaturday" parent="@style/LaunchTheme">
+        <item name="android:windowBackground">@drawable/launch_background_saturday</item>
+    </style>
+    <style name="LaunchThemeSunday" parent="@style/LaunchTheme">
+        <item name="android:windowBackground">@drawable/launch_background_sunday</item>
+    </style>
+</resources>

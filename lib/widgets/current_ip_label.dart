@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../data/auth_store.dart';
@@ -17,10 +18,28 @@ class _CurrentIpLabelState extends State<CurrentIpLabel> {
   static final _lanes = [Future<void>.value(), Future<void>.value()];
   static int _nextLane = 0;
   late Future<String> _value;
+  Timer? _delay;
+  Completer<void>? _delayDone;
+
+  void _cancelDelay() {
+    _delay?.cancel();
+    if (_delayDone?.isCompleted == false) _delayDone!.complete();
+  }
+
+  @override
+  void dispose() {
+    _cancelDelay();
+    super.dispose();
+  }
 
   Future<String> _load() async {
     // Offscreen rows that disappear during a quick fling do not start requests.
-    await Future<void>.delayed(const Duration(milliseconds: 180));
+    _cancelDelay();
+    final done = Completer<void>();
+    _delayDone = done;
+    _delay = Timer(const Duration(milliseconds: 180), done.complete);
+    await done.future;
+    if (_delayDone != done) return "";
     if (!mounted) return '';
     final account = AuthStore.instance.activeId;
     final key = '$account:${userKey(widget.user)}';
@@ -67,9 +86,7 @@ class _CurrentIpLabelState extends State<CurrentIpLabel> {
   Widget build(BuildContext context) => FutureBuilder<String>(
     future: _value,
     builder: (context, result) => Text(
-      result.hasData
-          ? (result.data!.isEmpty ? 'IP 未提供' : '当前 IP：${result.data}')
-          : '当前 IP：…',
+      result.hasData ? (result.data!.isEmpty ? '属地未提供' : result.data!) : '…',
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(

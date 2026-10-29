@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'dart:io';
+
 import '../data/app_update.dart';
 
 class UpdatePage extends StatefulWidget {
@@ -25,10 +27,14 @@ class _UpdatePageState extends State<UpdatePage> {
         return ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            const Text('当前版本 ${AppUpdate.version}'),
+            Text(
+              '当前版本 ${AppUpdate.version.isEmpty ? '读取中…' : AppUpdate.version}',
+            ),
             const SizedBox(height: 16),
             Text(
-              update.checking
+              Platform.isWindows
+                  ? 'Windows 桌面版'
+                  : update.checking
                   ? '正在检查更新…'
                   : update.checkError != null
                   ? '暂时无法确认最新版本'
@@ -67,12 +73,18 @@ class _UpdatePageState extends State<UpdatePage> {
                       : '下载 ${update.latest}',
                 ),
               ),
-            TextButton(
-              onPressed: update.checking || update.downloading
-                  ? null
-                  : () => update.check(force: true),
-              child: const Text('重新检查更新'),
-            ),
+            if (Platform.isWindows)
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: Text('请在项目发布页查看 Windows 版本并下载更新。'),
+              ),
+            if (!Platform.isWindows)
+              TextButton(
+                onPressed: update.checking || update.downloading
+                    ? null
+                    : () => update.check(force: true),
+                child: const Text('重新检查更新'),
+              ),
             if (update.downloading) const LinearProgressIndicator(),
             const SizedBox(height: 20),
             OutlinedButton.icon(
@@ -102,12 +114,6 @@ class _UpdatePageState extends State<UpdatePage> {
               label: const Text('GitHub 项目主页'),
             ),
             const SelectableText(AppUpdate.projectUrl),
-            if (update.notes.isNotEmpty) ...[
-              const SizedBox(height: 20),
-              const Text('更新内容'),
-              const SizedBox(height: 8),
-              SelectableText(update.notes),
-            ],
           ],
         );
       },

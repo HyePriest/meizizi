@@ -1,13 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 import 'auth_store.dart';
+import 'forum_protocol.dart';
 import 'models.dart';
 import 'post_protocol.dart';
 export 'models.dart';
+export 'forum_protocol.dart' show ForumSection, forumSections;
 
 class SignSession {
   SignSession._(this.account, this._token);
@@ -15,8 +18,22 @@ class SignSession {
 }
 
 class TiebaApi {
-  TiebaApi({http.Client? client}) : _client = client ?? http.Client();
+  TiebaApi({http.Client? client})
+    : _ownsClient = client != null,
+      _client = client ?? _acquireClient();
   final http.Client _client;
+  final bool _ownsClient;
+  static http.Client? _sharedClient;
+  static int _clientUsers = 0;
+  static Timer? _clientIdleTimer;
+
+  static http.Client _acquireClient() {
+    _clientIdleTimer?.cancel();
+    _clientIdleTimer = null;
+    _clientUsers++;
+    return _sharedClient ??= http.Client();
+  }
+
   final AuthStore _auth = AuthStore.instance;
   final Map<String, int> _floors = {};
   final Map<String, TiebaPage> _firstPages = {};
@@ -26,9 +43,80 @@ class TiebaApi {
   static final Map<String, Json> _levelCache = {};
   static final Map<String, ({DateTime time, List<Json> users})> _bawuCache = {};
   bool _closed = false;
+  static final _forumSummaries =
+      <String, ({DateTime time, Future<Json> value})>{};
+  static int _summaryRequests = 0;
+  static final _summaryQueue = <Completer<void>>[];
+
+  static Future<Json> forumSummary(String name, {bool force = false}) {
+    final cached = _forumSummaries[name];
+    if (!force &&
+        cached != null &&
+        DateTime.now().difference(cached.time) < const Duration(minutes: 10)) {
+      return cached.value;
+    }
+    if (_forumSummaries.length >= 80)
+      _forumSummaries.remove(_forumSummaries.keys.first);
+    final value = _loadForumSummary(name).catchError((Object error) {
+      final entry = _forumSummaries[name];
+      if (entry != null) {
+        _forumSummaries[name] = (
+          time: DateTime.now().subtract(
+            const Duration(minutes: 9, seconds: 40),
+          ),
+          value: entry.value,
+        );
+      }
+      return <String, dynamic>{};
+    });
+    _forumSummaries[name] = (time: DateTime.now(), value: value);
+    return value;
+  }
+
+  static Future<Json> _loadForumSummary(String name) async {
+    if (_summaryRequests >= 2) {
+      final ready = Completer<void>();
+      _summaryQueue.add(ready);
+      await ready.future;
+    } else {
+      _summaryRequests++;
+    }
+    final api = TiebaApi();
+    try {
+      final result = await api._request('/c/f/frs/page', {
+        '_client_version': '22.12.1.0',
+        'kw': name,
+        'is_newfrs': '1',
+        'pn': '1',
+        'rn': '1',
+      });
+      return {
+        ...object(result.data['forum']),
+        'header_image': decodeForumHeaderImage(result.data),
+      };
+    } finally {
+      api.close();
+      if (_summaryQueue.isNotEmpty) {
+        _summaryQueue.removeAt(0).complete();
+      } else {
+        _summaryRequests--;
+      }
+    }
+  }
+
   void close() {
+    if (_closed) return;
     _closed = true;
-    _client.close();
+    if (_ownsClient) {
+      _client.close();
+    } else if (--_clientUsers == 0) {
+      // Keep connections warm between routes without retaining them forever.
+      _clientIdleTimer = Timer(const Duration(seconds: 30), () {
+        _sharedClient?.close();
+        _sharedClient = null;
+        _clientIdleTimer = null;
+      });
+    }
   }
 
   Json _decode(
@@ -38,9 +126,7 @@ class TiebaApi {
   }) {
     if (response.statusCode != 200) {
       throw TiebaException(
-        writing
-            ? '发送结果未确认，请刷新帖子核对。草稿已保留。'
-            : '服务器返回 ${response.statusCode}，请稍后重试',
+        writing ? '发送结果未确认，请刷新帖子核对。' : '服务器返回 ${response.statusCode}，请稍后重试',
         uncertain: writing,
       );
     }
@@ -49,7 +135,7 @@ class TiebaApi {
       data = object(jsonDecode(utf8.decode(response.bodyBytes)));
     } on FormatException {
       throw TiebaException(
-        writing ? '发送结果未确认，请先刷新帖子核对。草稿已保留。' : '返回数据无法识别，可能需要在官方页面完成验证',
+        writing ? '发送结果未确认，请先刷新帖子核对。' : '返回数据无法识别，可能需要在官方页面完成验证',
         uncertain: writing,
       );
     }
@@ -58,7 +144,7 @@ class TiebaApi {
         !data.containsKey('no') &&
         !data.containsKey('errno')) {
       throw TiebaException(
-        writing ? '发送结果未确认，请先刷新帖子核对。草稿已保留。' : '接口数据格式发生变化',
+        writing ? '发送结果未确认，请先刷新帖子核对。' : '接口数据格式发生变化',
         uncertain: writing,
       );
     }
@@ -84,6 +170,7 @@ class TiebaApi {
     String path,
     Map<String, String> parameters, {
     bool writing = false,
+    String host = 'c.tieba.baidu.com',
   }) async {
     final body = <String, String>{
       '_client_type': '2',
@@ -101,7 +188,7 @@ class TiebaApi {
         )
         .toString();
     try {
-      final request = http.Request('POST', Uri.https('c.tieba.baidu.com', path))
+      final request = http.Request('POST', Uri.https(host, path))
         ..followRedirects = false
         ..headers['User-Agent'] = 'bdtb for Android ${body['_client_version']}'
         ..bodyFields = body;
@@ -115,12 +202,12 @@ class TiebaApi {
       return TiebaPage(data);
     } on TimeoutException {
       throw TiebaException(
-        writing ? '发送结果未确认，请先刷新帖子确认，避免重复回复。草稿已保留。' : '请求超时，请检查网络后重试',
+        writing ? '发送结果未确认，请先刷新帖子确认，避免重复回复。' : '请求超时，请检查网络后重试',
         uncertain: writing,
       );
     } on http.ClientException {
       throw TiebaException(
-        writing ? '连接中断，发送结果未确认。请先刷新帖子确认，草稿已保留。' : '无法连接贴吧，请检查网络',
+        writing ? '连接中断，发送结果未确认。请先刷新帖子确认，' : '无法连接贴吧，请检查网络',
         uncertain: writing,
       );
     }
@@ -161,23 +248,80 @@ class TiebaApi {
     throw const TiebaException('百度网页接口跳转异常，请稍后再试');
   }
 
-  Future<TiebaPage> forum(String name, int page, {String category = '最新回复'}) =>
-      _request('/c/f/frs/page', {
-        '_client_version': '22.12.1.0',
-        'kw': name,
+  Future<TiebaPage> forum(
+    String name,
+    int page, {
+    String category = '最新回复',
+    ForumSection? section,
+    String forumId = '',
+    String lastThreadId = '0',
+  }) async {
+    if (section != null) {
+      if (number(forumId) <= 0) throw const TiebaException('吧信息尚未加载，请稍后重试');
+      final response = await _request('/c/f/frs/generalTabList', {
+        '_client_version': '12.35.1.0',
+        'forum_id': forumId,
+        'tab_id': '${section.id}',
+        'tab_name': section.name,
+        'tab_type': '${section.type}',
+        'is_general_tab': '1',
         'pn': '$page',
         'rn': '20',
-        'sort_type': category == '最新发布'
-            ? '1'
-            : category == '热门'
-            ? '3'
-            : '0',
-        if (category == '精华') 'is_good': '1',
-        if (category == '精华') 'cid': '0',
+        'sort_type': '0',
+        'last_thread_id': lastThreadId,
+        'is_newfrs': '1',
       });
+      final data = <String, dynamic>{
+        ...response.data,
+        if (response.data['general_list'] is List)
+          'thread_list': response.data['general_list'],
+        'page': {'current_page': page, 'has_more': response.data['has_more']},
+      };
+      final decoded = decodeForumThreads(data);
+      if (decoded.issue != null && decoded.threads.isEmpty) {
+        throw const TiebaException('板块帖子解析失败，请重试或反馈此问题');
+      }
+      return TiebaPage({
+        ...data,
+        'thread_list': decoded.threads,
+        if (decoded.issue != null) 'forum_parse_warning': '部分内容暂时无法解析。',
+      });
+    }
+    final response = await _request('/c/f/frs/page', {
+      // Keep the verified classic request profile; decode either response
+      // format because the server can choose component cards per forum.
+      '_client_version': '12.35.1.0',
+      'kw': name,
+      'pn': '$page',
+      'rn': '20',
+      'sort_type': category == '最新发布'
+          ? '1'
+          : category == '热门'
+          ? '3'
+          : '0',
+      if (category == '精华') 'is_good': '1',
+      if (category == '精华') 'cid': '0',
+    });
+    final decoded = decodeForumThreads(response.data);
+    if (decoded.issue != null && decoded.threads.isEmpty) {
+      throw const TiebaException('帖子列表解析失败，可能是接口格式发生变化。请重试或反馈此问题。');
+    }
+    return TiebaPage({
+      ...response.data,
+      'thread_list': decoded.threads,
+      if (decoded.issue != null) 'forum_parse_warning': '部分内容暂时无法解析。',
+    });
+  }
 
   Future<TiebaPage> home(int page) => _request('/c/f/excellent/personalized', {
-    '_client_version': '8.0.8.0',
+    // Older responses expose stale names even when the author ID is correct.
+    '_client_version': '22.12.1.0',
+    if (_auth.isGuest) ...{
+      'cuid': _auth.deviceId,
+      '_client_id': 'wappc_${_auth.deviceId}',
+      '_phone_imei': '000000000000000',
+      'net_type': '1',
+    },
     'page_thread_count': '20',
     'pn': '$page',
     'pre_ad_thread_count': '0',
@@ -185,6 +329,55 @@ class TiebaApi {
     'invoke_source': '',
     'request_time': '${DateTime.now().millisecondsSinceEpoch}',
   });
+
+  Future<List<Json>> hotTopics() async {
+    final response = await _webGet(
+      '/hottopic/browse/topicList',
+      {},
+      cookies: '',
+      requireCode: false,
+    );
+    final bang = object(object(response['data'])['bang_topic']);
+    if (bang['topic_list'] is! List) {
+      throw const TiebaException('热榜暂时不可用，请稍后重试');
+    }
+    return objects(bang['topic_list'])
+        .where(
+          (topic) =>
+              number(topic['topic_id']) > 0 &&
+              firstText([topic['topic_name']]).isNotEmpty,
+        )
+        .toList();
+  }
+
+  Future<({List<Json> items, bool hasMore, String lastId})> topicThreads(
+    String topicId,
+    String topicName,
+    int page, {
+    String lastId = '',
+    bool latest = false,
+  }) async {
+    final response = await _webGet('/hottopic/browse/getTopicRelateThread', {
+      'topic_id': topicId,
+      'topic_name': topicName,
+      'page_no': '$page',
+      'last_id': lastId,
+      'sort_type': latest ? '2' : '1',
+    }, cookies: '');
+    final data = object(response['data']);
+    if (data['thread_list'] is! List) {
+      throw const TiebaException('话题帖子暂时不可用，请稍后重试');
+    }
+    final paging = object(data['page']);
+    return (
+      items: objects(data['thread_list'])
+          .where((item) => number(item['tid']) > 0)
+          .map((item) => <String, dynamic>{...item, 'id': item['tid']})
+          .toList(),
+      hasMore: flag(paging['has_more']),
+      lastId: firstText([paging['last_id']]),
+    );
+  }
 
   Future<Json> _session([String? bduss]) async {
     final session = await _request('/c/s/login', {
@@ -274,13 +467,20 @@ class TiebaApi {
     if (!_auth.isLoggedIn || _auth.activeId != credentials.account) {
       throw const TiebaException('账号已切换或退出，签到已停止');
     }
-    final result = await _request('/c/c/forum/sign', {
-      'kw': name,
-      'tbs': credentials._token,
-      'net_type': '1',
-    }, writing: true);
+    final result = await _request(
+      '/c/c/forum/sign',
+      {
+        '_client_version': '22.12.1.0',
+        'kw': name,
+        'tbs': credentials._token,
+        'net_type': '1',
+      },
+      writing: true,
+      host: 'tiebac.baidu.com',
+    );
+    _checkForumWriteError(result.data);
     final info = object(result.data['user_info']);
-    if (result.data['error'] is Map || !flag(info['is_sign_in'])) {
+    if (!flag(info['is_sign_in'])) {
       final message = firstText([
         object(result.data['error'])['usermsg'],
       ], '签到未确认，请刷新吧页面查看签到状态');
@@ -299,12 +499,34 @@ class TiebaApi {
     final account = _auth.activeId;
     final token = await _token();
     if (_auth.activeId != account) throw const TiebaException('账号已切换，请重新操作');
-    await _request(undo ? '/c/c/forum/unfavolike' : '/c/c/forum/like', {
-      'kw': name,
-      'forum_name': name,
-      'fid': id,
-      'tbs': token,
-    }, writing: true);
+    final result = await _request(
+      undo ? '/c/c/forum/unfavolike' : '/c/c/forum/like',
+      {
+        '_client_version': '22.12.1.0',
+        'kw': name,
+        'forum_name': name,
+        'fid': id,
+        'tbs': token,
+      },
+      writing: true,
+      host: 'tiebac.baidu.com',
+    );
+    _checkForumWriteError(result.data);
+  }
+
+  // Forum writes may report failure inside `error` even with error_code == 0.
+  void _checkForumWriteError(Json data) {
+    final error = object(data['error']);
+    if (error.isEmpty ||
+        (error.containsKey('errno') && number(error['errno']) == 0)) {
+      return;
+    }
+    _cachedToken = '';
+    _tokenTime = null;
+    throw TiebaException(
+      firstText([error['usermsg'], error['errmsg']], '操作结果未确认，请刷新吧页面核对'),
+      uncertain: !error.containsKey('errno'),
+    );
   }
 
   Future<Json> forumLevels(String id) async {
@@ -316,6 +538,69 @@ class TiebaApi {
     if (_levelCache.length >= 40) _levelCache.remove(_levelCache.keys.first);
     _levelCache[key] = data;
     return data;
+  }
+
+  Future<Json> forumRules(String id) async => (await _request(
+    '/c/f/forum/forumRuleDetail',
+    {'_client_version': '12.35.1.0', 'forum_id': id},
+  )).data;
+
+  Future<SearchResult> searchForum(String name, String word, int page) async {
+    final result = await _request('/c/s/searchpost', {
+      '_client_version': '12.35.1.0',
+      'kw': name,
+      'word': word,
+      'pn': '$page',
+      'rn': '20',
+      'sm': '1',
+      'only_thread': '1',
+    });
+    if (result.data['post_list'] is! List) {
+      throw const TiebaException('搜索结果格式无法识别，请重试');
+    }
+    return SearchResult(
+      objects(result.data['post_list']).where((t) => !isLiveThread(t)).toList(),
+      result.hasMore,
+    );
+  }
+
+  Future<Json> threadFeedDetails(String id) async {
+    final result = await _request('/c/f/pb/page', {
+      '_client_version': '22.12.1.0',
+      'kz': id,
+      'pn': '1',
+      'rn': '2',
+      'with_floor': '1',
+      'floor_rn': '4',
+      'floor_sort_type': '1',
+      'lz': '0',
+      'r': '0',
+    });
+    final thread = object(result.data['thread']);
+    final agree = object(thread['agree']);
+    final firstPost =
+        result.posts.where((post) => number(post['floor']) == 1).firstOrNull ??
+        <String, dynamic>{};
+    final authorId = firstText([
+      thread['author_id'],
+      object(thread['author'])['id'],
+      firstPost['author_id'],
+      object(firstPost['author'])['id'],
+    ]);
+    return {
+      '_feed_details_loaded': true,
+      if (firstPost['content'] != null) 'content': firstPost['content'],
+      if (firstPost['video_info'] != null)
+        'video_info': firstPost['video_info'],
+      'author': {
+        ...object(thread['author']),
+        ...?result.users[authorId],
+        ...object(firstPost['author']),
+      },
+      if (thread['reply_num'] != null) 'reply_num': thread['reply_num'],
+      if (agree['agree_num'] != null) 'agree': agree,
+      if (thread['agree_num'] != null) 'agree_num': thread['agree_num'],
+    };
   }
 
   Future<void> agree(
@@ -428,7 +713,7 @@ class TiebaApi {
         onFloorNumbers: onFloorNumbers,
       );
     }
-    final result = await _request('/c/f/pb/page', {
+    final request = _request('/c/f/pb/page', {
       '_client_version': '22.12.1.0',
       'kz': id,
       if (targetPost == null) 'pn': '$page',
@@ -440,13 +725,22 @@ class TiebaApi {
       if (targetPost != null) 'pid': targetPost,
       'r': descending ? '1' : '0',
     });
+    // Fetch the first floor alongside the reverse page, not after it.
+    final needsFirst = descending && page == 1 && targetPost == null;
+    final cachedFirst = _firstPages['${_auth.activeId}:$id:$onlyAuthor'];
+    final pages = await Future.wait<TiebaPage>([
+      request,
+      if (needsFirst)
+        cachedFirst != null
+            ? Future.value(cachedFirst)
+            : thread(id, 1, onlyAuthor: onlyAuthor),
+    ]);
+    final result = pages.first;
     _rememberFloors(id, result.posts);
     if (page == 1 && targetPost == null && !descending)
       _firstPages['${_auth.activeId}:$id:$onlyAuthor'] = result;
-    if (descending && page == 1 && targetPost == null) {
-      final first =
-          _firstPages['${_auth.activeId}:$id:$onlyAuthor'] ??
-          await thread(id, 1, onlyAuthor: onlyAuthor);
+    if (needsFirst) {
+      final first = pages[1];
       final firstPosts = first.posts.where((p) => number(p['floor']) == 1);
       final posts = result.posts.where((p) => number(p['floor']) != 1);
       return TiebaPage({
@@ -555,9 +849,17 @@ class TiebaApi {
               filename: 'file',
             ),
           );
-    final response = await http.Response.fromStream(
-      await _client.send(request).timeout(const Duration(seconds: 25)),
-    ).timeout(const Duration(seconds: 25));
+    final cachedFirst = _firstPages['${_auth.activeId}:$id:$onlyAuthor'];
+    final results = await Future.wait<Object>([
+      (() async => http.Response.fromStream(
+        await _client.send(request).timeout(const Duration(seconds: 25)),
+      ).timeout(const Duration(seconds: 25)))(),
+      if (page == 1)
+        cachedFirst != null
+            ? Future.value(cachedFirst)
+            : thread(id, 1, onlyAuthor: onlyAuthor),
+    ]);
+    final response = results.first as http.Response;
     if (response.statusCode != 200) {
       throw TiebaException('服务器返回 ${response.statusCode}，请重试');
     }
@@ -575,9 +877,7 @@ class TiebaApi {
     final data = object(result['data']);
     // JSON retains forum avatar and account-specific metadata; native posts supply the actual hot order.
     if (page == 1) {
-      final metadata =
-          _firstPages['${_auth.activeId}:$id:$onlyAuthor'] ??
-          await thread(id, 1, onlyAuthor: onlyAuthor);
+      final metadata = results[1] as TiebaPage;
       data['forum'] = {
         ...object(metadata.data['forum']),
         ...object(data['forum']),
@@ -978,6 +1278,34 @@ class TiebaApi {
     );
   }
 
+  Future<SearchResult> searchUsers(String word, int page) async {
+    final response = await _webGet('/mo/q/search/user', {
+      'word': word,
+      'pn': '$page',
+      'rn': '20',
+    });
+    final data = object(response['data']);
+    final exact = object(data['exactMatch']);
+    final seen = <String>{};
+    final users = [if (exact.isNotEmpty) exact, ...objects(data['fuzzyMatch'])]
+        .where((user) => number(user['id']) > 0 && seen.add('${user['id']}'))
+        .map(
+          (user) => <String, dynamic>{
+            ...user,
+            'name_show': plainText(
+              firstText([
+                user['show_nickname'],
+                user['user_nickname'],
+                user['name'],
+              ]),
+            ),
+            'avatar': user['portrait'],
+          },
+        )
+        .toList();
+    return SearchResult(users, flag(data['has_more']));
+  }
+
   Future<SearchResult> search(
     String word,
     int page, {
@@ -1008,16 +1336,85 @@ class TiebaApi {
       'tt': '1',
     });
     final data = object(response['data']);
-    return SearchResult(objects(data['post_list']), flag(data['has_more']));
+    return SearchResult(
+      objects(data['post_list']).where((t) => !isLiveThread(t)).toList(),
+      flag(data['has_more']),
+    );
   }
 
   Future<Json> acceptLogin(Map<String, String> cookies) async {
-    final bduss = cookies['BDUSS'] ?? cookies['BDUSS_BFESS'] ?? '';
+    final bduss = firstText([cookies['BDUSS'], cookies['BDUSS_BFESS']]);
     if (bduss.isEmpty) throw const TiebaException('尚未取得登录状态，请在网页中完成登录');
     final session = await _session(bduss);
     final profile = object(session['user']);
     await _auth.save(cookies, profile);
     return profile;
+  }
+
+  Future<String> uploadReplyImage({
+    required Uint8List bytes,
+    required int width,
+    required int height,
+    required String mime,
+    required String forumName,
+  }) async {
+    if (!_auth.isLoggedIn) throw const TiebaException('请先登录后再发送图片');
+    final request =
+        http.MultipartRequest(
+            'POST',
+            Uri.https('c.tieba.baidu.com', '/c/s/uploadPicture'),
+          )
+          ..followRedirects = false
+          ..headers.addAll({
+            'User-Agent': 'bdtb for Android 12.24.1.0',
+            'Referer': 'https://tieba.baidu.com/',
+            'Cookie': _auth.cookieHeader,
+          })
+          ..fields.addAll({
+            'BDUSS': _auth.bduss,
+            'stoken': _auth.stoken,
+            'baiduid': _auth.baiduid,
+            'active_timestamp': '${DateTime.now().millisecondsSinceEpoch}',
+            'alt': 'json',
+            'chunkNo': '1',
+            'cmode': '1',
+            'forum_name': forumName,
+            'small_flow_fname': forumName,
+            'height': '$height',
+            'width': '$width',
+            'size': '${bytes.length}',
+            'isFinish': '1',
+            'is_bjh': '0',
+            'pic_water_type': '2',
+            'saveOrigin': '0',
+            'resourceId': '${DateTime.now().microsecondsSinceEpoch}',
+          });
+    final extension = mime == 'image/gif'
+        ? 'gif'
+        : (mime == 'image/png' ? 'png' : 'jpg');
+    request.files.add(
+      http.MultipartFile.fromBytes('chunk', bytes, filename: 'file.$extension'),
+    );
+    try {
+      final response = await http.Response.fromStream(
+        await _client.send(request).timeout(const Duration(seconds: 60)),
+      ).timeout(const Duration(seconds: 30));
+      final data = _decode(response);
+      final id = firstText([data['picId'], object(data['data'])['picId']]);
+      if (!RegExp(r'^[A-Za-z0-9_.-]+$').hasMatch(id)) {
+        throw const TiebaException('图片上传未返回有效的图片编号');
+      }
+      final origin = object(object(data['picInfo'])['originPic']);
+      final w = number(origin['width']) > 0 ? number(origin['width']) : width;
+      final h = number(origin['height']) > 0
+          ? number(origin['height'])
+          : height;
+      return '#(pic,$id,$w,$h)';
+    } on TimeoutException {
+      throw const TiebaException('图片上传超时，请重试');
+    } on http.ClientException {
+      throw const TiebaException('图片上传连接中断，请重试');
+    }
   }
 
   Future<void> reply({
@@ -1027,6 +1424,7 @@ class TiebaApi {
     required String content,
     String? postId,
     String? replyUid,
+    int imageCount = 0,
   }) async {
     if (!_auth.isLoggedIn) throw const TiebaException('请先登录后再回复');
     final token = await _token();
@@ -1049,7 +1447,7 @@ class TiebaApi {
       'is_ad': '0',
       'is_feedback': '0',
       'entrance_type': '0',
-      'takephoto_num': '0',
+      'takephoto_num': '$imageCount',
       'can_no_forum': '0',
       'baiduid': _auth.baiduid,
       'cuid': _auth.deviceId,

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item type="drawable" name="launcher_monday">@mipmap/weekly_monday</item>
+    <item type="drawable" name="launcher_tuesday">@mipmap/weekly_tuesday</item>
+    <item type="drawable" name="launcher_wednesday">@mipmap/weekly_wednesday</item>
+    <item type="drawable" name="launcher_thursday">@mipmap/weekly_thursday</item>
+    <item type="drawable" name="launcher_friday">@mipmap/weekly_friday</item>
+    <item type="drawable" name="launcher_saturday">@mipmap/weekly_saturday</item>
+    <item type="drawable" name="launcher_sunday">@mipmap/weekly_sunday</item>
+</resources>

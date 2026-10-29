@@ -1,7 +1,9 @@
+import 'platform_session.dart';
 import 'package:flutter/services.dart';
 
 import 'models.dart';
 import 'emoji.dart';
+import 'share_image.dart';
 
 String contentSummary(dynamic content) => contentParts(content)
     .map((part) {
@@ -22,9 +24,39 @@ class ShareContent {
     required this.title,
     required this.url,
     required this.text,
+    this.forum = '',
+    this.imageData = const {},
+    this.isComment = false,
+    this.isForum = false,
   });
   final String title, url, text;
-  static const channel = MethodChannel('com.jknl.tieba/session');
+  final String forum;
+  final Json imageData;
+  final bool isComment;
+  final bool isForum;
+  static bool _sharing = false;
+  static const channel = PlatformSession();
+
+  factory ShareContent.forForum(String name, Json data) {
+    final url = Uri.https('tieba.baidu.com', '/f', {'kw': name}).toString();
+    return ShareContent(
+      title: '$name吧',
+      forum: name,
+      url: url,
+      isForum: true,
+      imageData: Map<String, dynamic>.unmodifiable(data),
+      text: ['$name吧', forumDescription(data), url].join('\n'),
+    );
+  }
+
+  Future<void> shareLink() =>
+      channel.invokeMethod<void>('shareText', {'title': title, 'text': text});
+
+  Future<Uint8List> renderPoster({String? headerImage}) => renderForumPoster(
+    name: forum,
+    url: url,
+    data: {...imageData, if (headerImage != null) 'header_image': headerImage},
+  );
 
   factory ShareContent.post({
     required String threadId,
@@ -32,6 +64,7 @@ class ShareContent {
     String forum = '',
     String postId = '',
     Json? comment,
+    Json? post,
   }) {
     final url =
         Uri.https(
@@ -53,6 +86,9 @@ class ShareContent {
     }
     return ShareContent(
       title: heading,
+      forum: forum,
+      imageData: comment ?? post ?? const {},
+      isComment: comment != null,
       url: url,
       text: [
         heading,
@@ -64,7 +100,28 @@ class ShareContent {
     );
   }
 
-  Future<void> share() =>
-      channel.invokeMethod<void>('shareText', {'title': title, 'text': text});
+  Future<void> share() async {
+    if (_sharing) return;
+    _sharing = true;
+    try {
+      final bytes = isForum
+          ? await renderPoster()
+          : await renderShareImage(
+              title: title,
+              forum: forum,
+              url: url,
+              data: imageData,
+              comment: isComment,
+            );
+      await channel.invokeMethod<void>('shareImage', {
+        'bytes': bytes,
+        'title': title,
+        'url': url,
+      });
+    } finally {
+      _sharing = false;
+    }
+  }
+
   Future<void> copyLink() => Clipboard.setData(ClipboardData(text: url));
 }

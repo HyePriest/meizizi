@@ -143,10 +143,12 @@ const _schemas = <String, Map<int, _Field>>{
     11: ('c', 'string', false),
     12: ('voice_md5', 'string', false),
     13: ('during_time', 'int', false),
+    15: ('uid', 'int', false),
     18: ('width', 'int', false),
     19: ('height', 'int', false),
     25: ('origin_src', 'string', false),
     27: ('origin_size', 'int', false),
+    49: ('portrait', 'string', false),
   },
 };
 

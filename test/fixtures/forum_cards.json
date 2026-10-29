@@ -1,0 +1,851 @@
+{
+  "error_code": 0,
+  "page": {
+    "total_count": 3937100,
+    "total_page": 302854,
+    "has_more": 1,
+    "has_prev": 0,
+    "cur_good_id": 0,
+    "page_size": 13,
+    "offset": 0,
+    "current_page": 1
+  },
+  "forum": {
+    "id": 74075,
+    "name": "图拉丁"
+  },
+  "page_data": {
+    "feed_list": [
+      {
+        "layout": "frs_top_thread_card",
+        "frs_top_thread_card": {
+          "components": [
+            {
+              "component": "frs_top_thread",
+              "frs_top_thread": {
+                "title": [
+                  {
+                    "type": 6,
+                    "text_info": {
+                      "text": "置顶",
+                      "color": {
+                        "type": 1,
+                        "day": "FF2B87FF",
+                        "night": "FF2B87FF"
+                      },
+                      "bg_color": {
+                        "type": 1,
+                        "day": "E52B87FF",
+                        "night": "E52B87FF"
+                      }
+                    }
+                  },
+                  {
+                    "type": 1,
+                    "text_info": {
+                      "text": "【农贸】图拉丁吧硬件交流平台友好互换"
+                    }
+                  }
+                ],
+                "pic_abstract": {
+                  "abstract": [
+                    {
+                      "type": 1,
+                      "text_info": {
+                        "text": "图拉丁吧硬件公共互换平台、方便吧友互通有无，单开删封。"
+                      }
+                    }
+                  ]
+                },
+                "author_social": {
+                  "comment_num": 21307,
+                  "share_num": 19,
+                  "tid": 10707741591,
+                  "fid": 74075,
+                  "image_data": {
+                    "img_url": "http://tb.himg.baidu.com/sys/portrait/item/tb.1.9c246117._5qzRyG9g0sMf7fuGBDEpw?t=1477826885",
+                    "shape_type": 1,
+                    "pendant_url": "",
+                    "corner_url": "local://icon/pic_barman_1level_simple12"
+                  },
+                  "main_data": [
+                    {
+                      "type": 1,
+                      "text": {
+                        "degrade_priority": 1,
+                        "suffix": "...",
+                        "color": {
+                          "type": 2,
+                          "day": "CAM_X0109",
+                          "night": "CAM_X0109"
+                        },
+                        "text": "shyp15😷",
+                        "priority": 8,
+                        "can_degrade": 1,
+                        "degrade_len": 5
+                      }
+                    },
+                    {
+                      "icon": {
+                        "can_degrade": 0,
+                        "url": "https://tieba-ares.cdn.bcebos.com/mis/2025-11/1763370879739/0944f85b5113.png",
+                        "width": 78,
+                        "height": 45,
+                        "priority": 5
+                      },
+                      "type": 2
+                    }
+                  ],
+                  "agree": {
+                    "agree_num": 6220,
+                    "has_agree": 0,
+                    "agree_type": 0,
+                    "disagree_num": 37,
+                    "diff_agree_num": 6183
+                  }
+                },
+                "business_info": [
+                  {
+                    "key": "top_time",
+                    "value": "1778500899"
+                  },
+                  {
+                    "key": "top_max_time",
+                    "value": "432001"
+                  },
+                  {
+                    "key": "is_membertop",
+                    "value": "0"
+                  },
+                  {
+                    "key": "is_video",
+                    "value": "0"
+                  }
+                ]
+              }
+            },
+            {
+              "frs_top_thread": {
+                "title": [
+                  {
+                    "type": 6,
+                    "text_info": {
+                      "text": "置顶",
+                      "color": {
+                        "type": 1,
+                        "day": "FF2B87FF",
+                        "night": "FF2B87FF"
+                      },
+                      "bg_color": {
+                        "type": 1,
+                        "day": "E52B87FF",
+                        "night": "E52B87FF"
+                      }
+                    }
+                  },
+                  {
+                    "type": 1,
+                    "text_info": {
+                      "text": "被误封的小伙伴到这里来申诉"
+                    }
+                  }
+                ],
+                "pic_abstract": {
+                  "abstract": [
+                    {
+                      "type": 1,
+                      "text_info": {
+                        "text": "先给被误封的小伙伴磕一个"
+                      }
+                    },
+                    {
+                      "type": 3,
+                      "emoji_info": {
+                        "name": "image_emoticon66",
+                        "c": "#(小乖)"
+                      }
+                    },
+                    {
+                      "type": 1,
+                      "text_info": {
+                        "text": " "
+                      }
+                    },
+                    {
+                      "type": 3,
+                      "emoji_info": {
+                        "name": "image_emoticon19",
+                        "c": "#(委屈)"
+                      }
+                    },
+                    {
+                      "type": 1,
+                      "text_info": {
+                        "text": " "
+                      }
+                    },
+                    {
+                      "type": 3,
+                      "emoji_info": {
+                        "name": "image_emoticon9",
+                        "c": "#(泪)"
+                      }
+                    }
+                  ]
+                },
+                "author_social": {
+                  "agree": {
+                    "agree_num": 494,
+                    "has_agree": 0,
+                    "agree_type": 0,
+                    "disagree_num": 6,
+                    "diff_agree_num": 488
+                  },
+                  "comment_num": 659,
+                  "share_num": 4,
+                  "tid": 9758585509,
+                  "fid": 74075,
+                  "image_data": {
+                    "corner_url": "",
+                    "img_url": "http://tb.himg.baidu.com/sys/portrait/item/tb.1.d38534c8.2NJtpTo3PxuR4dHf0_py1w?t=1533747500",
+                    "shape_type": 1,
+                    "pendant_url": ""
+                  },
+                  "main_data": [
+                    {
+                      "type": 1,
+                      "text": {
+                        "priority": 8,
+                        "can_degrade": 1,
+                        "degrade_len": 5,
+                        "degrade_priority": 1,
+                        "suffix": "...",
+                        "color": {
+                          "night": "CAM_X0109",
+                          "type": 2,
+                          "day": "CAM_X0109"
+                        },
+                        "text": "居家技术男🐶"
+                      }
+                    },
+                    {
+                      "type": 2,
+                      "icon": {
+                        "priority": 5,
+                        "can_degrade": 0,
+                        "url": "https://tieba-ares.cdn.bcebos.com/mis/2024-2/1708422830537/2c77cf4ccc79.webp",
+                        "width": 162,
+                        "height": 45
+                      }
+                    }
+                  ]
+                },
+                "business_info": [
+                  {
+                    "key": "top_time",
+                    "value": "1748834744"
+                  },
+                  {
+                    "key": "top_max_time",
+                    "value": "432001"
+                  },
+                  {
+                    "key": "is_membertop",
+                    "value": "0"
+                  },
+                  {
+                    "key": "is_video",
+                    "value": "0"
+                  }
+                ]
+              },
+              "component": "frs_top_thread"
+            }
+          ]
+        }
+      },
+      {
+        "hot_topic_card": {},
+        "layout": "hot_topic_card"
+      },
+      {
+        "layout": "feed",
+        "feed": {
+          "business_info": [
+            {
+              "key": "thread_type",
+              "value": "0"
+            },
+            {
+              "key": "abstract",
+              "value": "此前用z370+e2288g+内存插满+titanxp，然后看现在d5内存主板白菜价，就130块钱囤了一张微星中端大板z790 gaming plus wifi。 打算等以后四五年后ddr5内存便宜后，上个1700针处理器顺便内存插满。 目前锚定i9 12900k，未来i9 13900k或者i9 14900k会不会因为缩肛问题，导致全系都是缩肛大雷？ "
+            },
+            {
+              "key": "media_pic_url",
+              "value": "https://tiebapic.baidu.com/forum/w%3D320%3Bq%3D95%3Bg%3D0/sign=46aaf20f4ad79123e0e092769d0f28bf/c41cf9dcd100baa1413be5bc0110b912c8fc2e47.jpg?tbpicau=2026-11-05-05_e06958232e2431d1fdf3b33f07521e61"
+            },
+            {
+              "key": "feed_social_source",
+              "value": "3"
+            },
+            {
+              "key": "thread_id",
+              "value": "11136383532"
+            },
+            {
+              "key": "forum_id",
+              "value": "74075"
+            },
+            {
+              "value": "6",
+              "key": "growth_level"
+            },
+            {
+              "key": "forum_name",
+              "value": "图拉丁"
+            },
+            {
+              "key": "forum_avatar",
+              "value": "https://tiebapic.baidu.com/forum/w%3D120%3Bh%3D120/sign=937c357ec522720e7bcee6f84bf0627b/9825bc315c6034a8c454289d961349540923767c.jpg?tbpicau=2026-11-05-05_68ffed849e8f5face6e4edb6f61a384e"
+            },
+            {
+              "key": "pic_count",
+              "value": "1"
+            },
+            {
+              "key": "inner_tab_id",
+              "value": "0"
+            },
+            {
+              "key": "member_num",
+              "value": "8251039"
+            },
+            {
+              "key": "create_time",
+              "value": "1792925128"
+            },
+            {
+              "key": "has_concerned_user",
+              "value": "0"
+            },
+            {
+              "key": "update_read_status",
+              "value": "1"
+            },
+            {
+              "key": "user_id",
+              "value": "923313835"
+            },
+            {
+              "key": "view_num",
+              "value": "9"
+            },
+            {
+              "key": "post_num",
+              "value": "135365185"
+            },
+            {
+              "key": "title",
+              "value": "未来1700针处理器哪个性价比会更好呢？"
+            },
+            {
+              "key": "forum_is_liked",
+              "value": "0"
+            },
+            {
+              "key": "media_thumbnail_url",
+              "value": "https://tiebapic.baidu.com/forum/w%3D320%3Bq%3D95%3Bg%3D0/sign=46aaf20f4ad79123e0e092769d0f28bf/c41cf9dcd100baa1413be5bc0110b912c8fc2e47.jpg?tbpicau=2026-11-05-05_e06958232e2431d1fdf3b33f07521e61"
+            },
+            {
+              "key": "card_head_type",
+              "value": "common_forum"
+            },
+            {
+              "key": "recom_type",
+              "value": "1"
+            },
+            {
+              "key": "gua_type",
+              "value": "0"
+            },
+            {
+              "key": "can_multi_manage",
+              "value": "1"
+            },
+            {
+              "key": "nid",
+              "value": ""
+            }
+          ],
+          "components": [
+            {
+              "component": "feed_head",
+              "feed_head": {
+                "image_data": {
+                  "shape_type": 1,
+                  "pendant_url": "",
+                  "corner_url": "",
+                  "img_url": "http://tb.himg.baidu.com/sys/portrait/item/tb.1.f9cfb0e4.RbQGHrP76WTEUzUlJpPUqg?t=1727926152"
+                },
+                "main_data": [
+                  {
+                    "business_info": [
+                      {
+                        "key": "icon_type",
+                        "value": "name_show"
+                      }
+                    ],
+                    "type": 1,
+                    "text": {
+                      "degrade_priority": 1,
+                      "suffix": "...",
+                      "text": "猫猫要吃麦当劳",
+                      "priority": 8,
+                      "can_degrade": 1,
+                      "degrade_len": 5
+                    }
+                  },
+                  {
+                    "icon": {
+                      "url": "https://tieba-ares.cdn.bcebos.com/mis/2025-8/1756441588187/38627d866264.webp",
+                      "width": 62,
+                      "height": 39,
+                      "priority": 5,
+                      "can_degrade": 0
+                    },
+                    "type": 2,
+                    "business_info": [
+                      {
+                        "key": "icon_type",
+                        "value": "user_growth_level"
+                      }
+                    ]
+                  },
+                  {
+                    "type": 3,
+                    "custom": {
+                      "style": "forum_level",
+                      "data": "{\"level_id\":\"12\",\"level_name\":\"i9未知版\"}"
+                    },
+                    "business_info": [
+                      {
+                        "key": "icon_type",
+                        "value": "forum_level"
+                      }
+                    ]
+                  }
+                ],
+                "extra_data": [
+                  {
+                    "type": 1,
+                    "text": {
+                      "text": "1792925212",
+                      "priority": 1,
+                      "can_degrade": 0,
+                      "type": 3
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "component": "feed_title",
+              "feed_title": {
+                "data": [
+                  {
+                    "type": 1,
+                    "text_info": {
+                      "text": "未来1700针处理器哪个性价比会更好呢？"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "component": "feed_abstract",
+              "feed_abstract": {
+                "data": [
+                  {
+                    "type": 1,
+                    "text_info": {
+                      "text": "此前用z370+e2288g+内存插满+titanxp，然后看现在d5内存主板白菜价，就130块钱囤了一张微星中端大板z790 gaming plus wifi。\n打算等以后四五年后ddr5内存便宜后，上个1700针处理器顺便内存插满。\n目前锚定i9 12900k，未来i9 13900k或者i9 14900k会不会因为缩肛问题，导致全系都是缩肛大雷？"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "component": "feed_pic",
+              "feed_pic": {
+                "pics": [
+                  {
+                    "crop_point_width_ratio": 0.5,
+                    "pic_type": "",
+                    "height_ratio": 4,
+                    "width_ratio": 3,
+                    "small_pic_url": "https://tiebapic.baidu.com/forum/w%3D320%3Bq%3D95%3Bg%3D0/sign=46aaf20f4ad79123e0e092769d0f28bf/c41cf9dcd100baa1413be5bc0110b912c8fc2e47.jpg?tbpicau=2026-11-05-05_e06958232e2431d1fdf3b33f07521e61",
+                    "origin_pic_url": "https://tiebapic.baidu.com/forum/pic/item/c41cf9dcd100baa1413be5bc0110b912c8fc2e47.jpg?tbpicau=2026-11-05-05_7bd2bd5e5f7184670edb127d3ab2295a",
+                    "height": 746,
+                    "crop_point_height_ratio": 0.5855,
+                    "big_pic_url": "https://tiebapic.baidu.com/forum/w%3D320%3Bq%3D95%3Bg%3D0/sign=46aaf20f4ad79123e0e092769d0f28bf/c41cf9dcd100baa1413be5bc0110b912c8fc2e47.jpg?tbpicau=2026-11-05-05_e06958232e2431d1fdf3b33f07521e61",
+                    "width": 560,
+                    "is_long_pic": 0
+                  }
+                ],
+                "is_slide": 0,
+                "text": ""
+              }
+            },
+            {
+              "component": "feed_social",
+              "feed_social": {
+                "first_post_id": 154070297557,
+                "agree": {
+                  "has_agree": 0,
+                  "agree_type": 0,
+                  "disagree_num": 0,
+                  "diff_agree_num": 0,
+                  "agree_num": 0
+                },
+                "comment_num": 2,
+                "share_num": 0,
+                "tid": 11136383532,
+                "fid": 74075,
+                "is_grayreply": 0,
+                "is_store": 0
+              }
+            }
+          ]
+        }
+      },
+      {
+        "layout": "feed",
+        "feed": {
+          "business_info": [
+            {
+              "key": "forum_name",
+              "value": "图拉丁"
+            },
+            {
+              "value": "common_forum",
+              "key": "card_head_type"
+            },
+            {
+              "key": "feed_social_source",
+              "value": "3"
+            },
+            {
+              "key": "inner_tab_id",
+              "value": "3713719"
+            },
+            {
+              "key": "nid",
+              "value": ""
+            },
+            {
+              "key": "thread_id",
+              "value": "11136380705"
+            },
+            {
+              "key": "forum_id",
+              "value": "74075"
+            },
+            {
+              "key": "forum_is_liked",
+              "value": "0"
+            },
+            {
+              "key": "create_time",
+              "value": "1792925040"
+            },
+            {
+              "key": "growth_level",
+              "value": "1"
+            },
+            {
+              "key": "abstract",
+              "value": "吧友们，我的电脑配置是i5-13400和泰坦Xp，电源是航嘉的850W电源，最近电脑出现以大约10秒为一个周期，每个周期黑屏4-5秒（直接无信号输出）的情况。在未重启时会数小时正常而后出现或开机就出现，重启后该情况的是否出现和持续时间都会重新刷新。我双考十分钟是正常的，对内存和硬盘都检测了，没有问题。请问一下电脑哪里出问题了？谢谢🙏"
+            },
+            {
+              "key": "gua_type",
+              "value": "0"
+            },
+            {
+              "key": "can_multi_manage",
+              "value": "1"
+            },
+            {
+              "key": "thread_type",
+              "value": "71"
+            },
+            {
+              "value": "8251039",
+              "key": "member_num"
+            },
+            {
+              "key": "title",
+              "value": "求助!电脑间歇式黑屏"
+            },
+            {
+              "value": "17",
+              "key": "view_num"
+            },
+            {
+              "key": "has_concerned_user",
+              "value": "0"
+            },
+            {
+              "key": "recom_type",
+              "value": "10"
+            },
+            {
+              "key": "update_read_status",
+              "value": "1"
+            },
+            {
+              "key": "user_id",
+              "value": "6902718439"
+            },
+            {
+              "key": "post_num",
+              "value": "135365185"
+            },
+            {
+              "key": "forum_avatar",
+              "value": "https://tiebapic.baidu.com/forum/w%3D120%3Bh%3D120/sign=937c357ec522720e7bcee6f84bf0627b/9825bc315c6034a8c454289d961349540923767c.jpg?tbpicau=2026-11-05-05_68ffed849e8f5face6e4edb6f61a384e"
+            }
+          ],
+          "components": [
+            {
+              "feed_head": {
+                "image_data": {
+                  "img_url": "http://tb.himg.baidu.com/sys/portrait/item/tb.1.2f6c3fb7.r09QkdJMB7sPonHmGXGSWQ",
+                  "shape_type": 1,
+                  "pendant_url": "",
+                  "corner_url": ""
+                },
+                "main_data": [
+                  {
+                    "text": {
+                      "text": "绝世气吞天M",
+                      "priority": 8,
+                      "can_degrade": 1,
+                      "degrade_len": 5,
+                      "degrade_priority": 1,
+                      "suffix": "..."
+                    },
+                    "business_info": [
+                      {
+                        "key": "icon_type",
+                        "value": "name_show"
+                      }
+                    ],
+                    "type": 1
+                  },
+                  {
+                    "business_info": [
+                      {
+                        "key": "icon_type",
+                        "value": "user_growth_level"
+                      }
+                    ],
+                    "icon": {
+                      "url": "https://tieba-ares.cdn.bcebos.com/mis/2025-8/1756441586722/4d2b1ab056f2.webp",
+                      "width": 62,
+                      "height": 39,
+                      "priority": 5,
+                      "can_degrade": 0
+                    },
+                    "type": 2
+                  },
+                  {
+                    "type": 3,
+                    "custom": {
+                      "style": "forum_level",
+                      "data": "{\"level_id\":\"1\",\"level_name\":\"奔腾586\"}"
+                    },
+                    "business_info": [
+                      {
+                        "key": "icon_type",
+                        "value": "forum_level"
+                      }
+                    ]
+                  },
+                  {
+                    "type": 2,
+                    "business_info": [
+                      {
+                        "value": "personal_icon",
+                        "key": "icon_type"
+                      }
+                    ],
+                    "icon": {
+                      "width": 36,
+                      "height": 36,
+                      "priority": 6,
+                      "can_degrade": 0,
+                      "url": "http://tb1.bdstatic.com/tb/cms/com/icon/file_1599020647571.png"
+                    }
+                  }
+                ],
+                "extra_data": [
+                  {
+                    "icon": {
+                      "url": "https://tieba-ares.cdn.bcebos.com/mis/2026-5/1779797240204/c9fa57005820.png",
+                      "width": 14,
+                      "height": 14,
+                      "priority": 1,
+                      "can_degrade": 0
+                    },
+                    "type": 2
+                  },
+                  {
+                    "text": {
+                      "priority": 1,
+                      "can_degrade": 1,
+                      "degrade_len": 10,
+                      "text": "在线等"
+                    },
+                    "type": 1
+                  },
+                  {
+                    "type": 1,
+                    "text": {
+                      "can_degrade": 0,
+                      "text": "·",
+                      "priority": 1
+                    }
+                  },
+                  {
+                    "type": 1,
+                    "text": {
+                      "text": "1792925197",
+                      "priority": 1,
+                      "can_degrade": 0,
+                      "type": 1
+                    }
+                  }
+                ]
+              },
+              "component": "feed_head"
+            },
+            {
+              "component": "feed_title",
+              "feed_title": {
+                "data": [
+                  {
+                    "type": 6,
+                    "text_info": {
+                      "text": "求助",
+                      "color": {
+                        "type": 1,
+                        "day": "#FF4070FF",
+                        "night": "#FF547FFF"
+                      },
+                      "bg_color": {
+                        "type": 1,
+                        "day": "#804070FF",
+                        "night": "#804070FF"
+                      }
+                    }
+                  },
+                  {
+                    "type": 1,
+                    "text_info": {
+                      "text": "小白求助贴"
+                    }
+                  },
+                  {
+                    "type": 1,
+                    "text_info": {
+                      "text": "  |  ",
+                      "color": {
+                        "type": 2,
+                        "day": "CAM_X0203",
+                        "night": "CAM_X0203"
+                      }
+                    }
+                  },
+                  {
+                    "text_info": {
+                      "text": "求助!电脑间歇式黑屏"
+                    },
+                    "type": 1
+                  }
+                ]
+              }
+            },
+            {
+              "component": "feed_abstract",
+              "feed_abstract": {
+                "data": [
+                  {
+                    "type": 1,
+                    "text_info": {
+                      "text": "吧友们，我的电脑配置是i5-13400和泰坦Xp，电源是航嘉的850W电源，最近电脑出现以大约10秒为一个周期，每个周期黑屏4-5秒（直接无信号输出）的情况。在未重启时会数小时正常而后出现或开机就出现，重启后该情况的是否出现和持续时间都会重新刷新。我双考十分钟是正常的，对内存和硬盘都检测了，没有问题。请问一下电脑哪里出问题了？谢谢🙏"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "component": "feed_social",
+              "feed_social": {
+                "share_num": 0,
+                "is_grayreply": 0,
+                "agree_resource": {
+                  "day_url": "local://lottie/author_status_good_question",
+                  "night_url": "local://lottie/author_status_good_question_2"
+                },
+                "agree_selected_color": {
+                  "type": 1,
+                  "day": "#FF8200",
+                  "night": "#FF8200"
+                },
+                "agree": {
+                  "agree_num": 0,
+                  "has_agree": 0,
+                  "agree_type": 0,
+                  "disagree_num": 0,
+                  "diff_agree_num": 0
+                },
+                "tid": 11136380705,
+                "fid": 74075,
+                "is_store": 0,
+                "first_post_id": 154070293139,
+                "agree_animation": {
+                  "day_url": "local://icon/author_status_good_question_animation",
+                  "night_url": "local://icon/author_status_good_question_animation"
+                },
+                "agree_long_click": 1,
+                "agree_long_click_animation": [
+                  {
+                    "night_url": "https://tieba-ares.cdn.bcebos.com/mis/2026-5/1779785388777/d22128f02c5d.png",
+                    "day_url": "https://tieba-ares.cdn.bcebos.com/mis/2026-5/1779785388777/d22128f02c5d.png"
+                  },
+                  {
+                    "day_url": "https://tieba-ares.cdn.bcebos.com/mis/2026-5/1779785389312/07b2fca9c32c.png",
+                    "night_url": "https://tieba-ares.cdn.bcebos.com/mis/2026-5/1779785389312/07b2fca9c32c.png"
+                  },
+                  {
+                    "day_url": "https://tieba-ares.cdn.bcebos.com/mis/2026-5/1779785389727/d6bcac33e8ad.png",
+                    "night_url": "https://tieba-ares.cdn.bcebos.com/mis/2026-5/1779785389727/d6bcac33e8ad.png"
+                  },
+                  {
+                    "day_url": "https://tieba-ares.cdn.bcebos.com/mis/2026-5/1779785390129/4caaec934bad.png",
+                    "night_url": "https://tieba-ares.cdn.bcebos.com/mis/2026-5/1779785390129/4caaec934bad.png"
+                  },
+                  {
+                    "day_url": "https://tieba-ares.cdn.bcebos.com/mis/2026-5/1779785390507/4a5233068dd3.png",
+                    "night_url": "https://tieba-ares.cdn.bcebos.com/mis/2026-5/1779785390507/4a5233068dd3.png"
+                  }
+                ],
+                "comment_num": 2
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
