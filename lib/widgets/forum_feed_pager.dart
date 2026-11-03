@@ -7,6 +7,7 @@ import '../data/auth_store.dart';
 import '../data/tieba_api.dart';
 import '../features/reading/reading_controller.dart';
 import 'forum_category_bar.dart';
+import 'directional_page_drag.dart';
 import 'forum_thread_card.dart';
 import 'page_drag.dart';
 
@@ -44,7 +45,8 @@ class ForumFeedPager extends StatefulWidget {
 
 class _ForumFeedPagerState extends State<ForumFeedPager> {
   late final _pages = PageController(initialPage: widget.selected);
-  late final _headerDrag = PageDrag(_pages);
+  // Header and feed share one drag; only one finger gesture drives the pages.
+  late final _pageDrag = PageDrag(_pages);
 
   @override
   void didUpdateWidget(covariant ForumFeedPager oldWidget) {
@@ -65,7 +67,7 @@ class _ForumFeedPagerState extends State<ForumFeedPager> {
 
   @override
   void dispose() {
-    _headerDrag.cancel();
+    _pageDrag.cancel();
     _pages.dispose();
     super.dispose();
   }
@@ -76,14 +78,7 @@ class _ForumFeedPagerState extends State<ForumFeedPager> {
     physics: const AlwaysScrollableScrollPhysics(),
     headerSliverBuilder: (context, scrolled) => [
       SliverToBoxAdapter(
-        child: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onHorizontalDragUpdate: (details) =>
-              _headerDrag.update(details.delta, details.globalPosition),
-          onHorizontalDragEnd: (details) => _headerDrag.end(details.velocity),
-          onHorizontalDragCancel: _headerDrag.cancel,
-          child: widget.header,
-        ),
+        child: DirectionalPageDragArea(drag: _pageDrag, child: widget.header),
       ),
       SliverOverlapAbsorber(
         handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
@@ -93,27 +88,35 @@ class _ForumFeedPagerState extends State<ForumFeedPager> {
         ),
       ),
     ],
-    body: PageView.builder(
-      controller: _pages,
-      onPageChanged: widget.onSelected,
-      itemCount: widget.categories.length,
-      itemBuilder: (context, index) {
-        final query = widget.categories[index];
-        final primary = query.section == null && query.category == '热门';
-        return _ForumFeed(
-          key: ValueKey(
-            '${AuthStore.instance.activeId}:${query.section?.id ?? query.category}',
-          ),
-          api: widget.api,
-          query: query,
-          seed: widget.primaryReader.data,
-          primaryReader: primary ? widget.primaryReader : null,
-          loadPrimary: widget.loadPrimary,
-          active: index == widget.selected,
-          levelNames: widget.levelNames,
-          decorateUser: widget.decorateUser,
-        );
-      },
+    // PageView's own drag would accept slanted vertical scrolls, so page
+    // swipes come from the directional recognizer instead.
+    body: DirectionalPageDragArea(
+      drag: _pageDrag,
+      child: PageView.builder(
+        controller: _pages,
+        physics: const PageScrollPhysics(
+          parent: NeverScrollableScrollPhysics(),
+        ),
+        onPageChanged: widget.onSelected,
+        itemCount: widget.categories.length,
+        itemBuilder: (context, index) {
+          final query = widget.categories[index];
+          final primary = query.section == null && query.category == '热门';
+          return _ForumFeed(
+            key: ValueKey(
+              '${AuthStore.instance.activeId}:${query.section?.id ?? query.category}',
+            ),
+            api: widget.api,
+            query: query,
+            seed: widget.primaryReader.data,
+            primaryReader: primary ? widget.primaryReader : null,
+            loadPrimary: widget.loadPrimary,
+            active: index == widget.selected,
+            levelNames: widget.levelNames,
+            decorateUser: widget.decorateUser,
+          );
+        },
+      ),
     ),
   );
 }
@@ -172,10 +175,86 @@ class _ForumFeedState extends State<_ForumFeed>
 
   Future<void> _load(bool reset) async {
     if (_reader.busy) return;
+    if (reset) _emptyLoads = 0;
     if (widget.primaryReader != null) {
       await widget.loadPrimary(reset);
     } else {
       await _reader.load(widget.query, reset: reset);
+    }
+  }
+
+  /// Start loading the next page this far before the end of the list.
+  static const _prefetchExtent = 600.0;
+
+  /// Pages in a row that added no visible thread (forum pages can overlap).
+  /// After this many, automatic loading pauses so it cannot loop forever.
+  static const _maxEmptyLoads = 3;
+  int _emptyLoads = 0;
+  ScrollMetrics? _metrics;
+
+  bool get _canLoadMore =>
+      widget.active &&
+      _reader.data.hasMore &&
+      !_reader.busy &&
+      _reader.error == null &&
+      _emptyLoads < _maxEmptyLoads;
+
+  void _maybeLoadMore() {
+    final metrics = _metrics;
+    if (metrics == null || metrics.extentAfter >= _prefetchExtent) return;
+    if (_canLoadMore) _loadMore();
+  }
+
+  /// Threads shown after hiding blocked authors.
+  List<Json> _visibleRows() {
+    final data = _reader.data;
+    return data.items
+        .where(
+          (item) => !LocalStore.instance.userBlocked({
+            ...?data.users['${item['author_id']}'],
+            ...object(item['author']),
+          }, item),
+        )
+        .toList();
+  }
+
+  Future<void> _loadMore() async {
+    final before = _visibleRows().length;
+    await _load(false);
+    if (!mounted || _reader.error != null) return;
+    // Rows from blocked authors are hidden, so only visible rows count.
+    final grew = _visibleRows().length > before;
+    setState(() => _emptyLoads = grew ? 0 : _emptyLoads + 1);
+    // New rows change the list size and report fresh metrics on their own.
+    // Without new rows nothing moves, so check again with the same position.
+    if (!grew) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _maybeLoadMore();
+      });
+    }
+  }
+
+  bool _onScroll(Notification notification) {
+    final metrics = switch (notification) {
+      ScrollNotification(depth: 0, :final metrics) => metrics,
+      ScrollMetricsNotification(depth: 0, :final metrics) => metrics,
+      _ => null,
+    };
+    if (metrics != null && metrics.axis == Axis.vertical) {
+      _metrics = metrics;
+      _maybeLoadMore();
+    }
+    return false;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ForumFeed oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A tab that was swiped to may already be scrolled near its end.
+    if (widget.active && !oldWidget.active) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _maybeLoadMore();
+      });
     }
   }
 
@@ -213,8 +292,23 @@ class _ForumFeedState extends State<_ForumFeed>
       children: [
         if (warning.isNotEmpty)
           Padding(padding: const EdgeInsets.all(16), child: Text(warning)),
-        if (_reader.data.hasMore)
-          TextButton(onPressed: () => _load(false), child: const Text('加载下一页'))
+        if (_reader.data.hasMore && _emptyLoads >= _maxEmptyLoads)
+          TextButton(
+            onPressed: () {
+              setState(() => _emptyLoads = 0);
+              _loadMore();
+            },
+            child: const Text('暂时没有加载到新帖子，点击重试'),
+          )
+        else if (_reader.data.hasMore)
+          // Loading starts automatically before this footer scrolls into view.
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: SizedBox.square(
+              dimension: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+          )
         else
           Padding(
             padding: const EdgeInsets.all(24),
@@ -232,14 +326,7 @@ class _ForumFeedState extends State<_ForumFeed>
   Widget build(BuildContext context) {
     super.build(context);
     final data = _reader.data;
-    final rows = data.items
-        .where(
-          (item) => !LocalStore.instance.userBlocked({
-            ...?data.users['${item['author_id']}'],
-            ...object(item['author']),
-          }, item),
-        )
-        .toList();
+    final rows = _visibleRows();
     final indices = {
       for (var i = 0; i < rows.length; i++) '${rows[i]['id']}': i,
     };
@@ -250,19 +337,8 @@ class _ForumFeedState extends State<_ForumFeed>
           if (widget.primaryReader == null) await widget.loadPrimary(true);
           if (mounted) await _load(true);
         },
-        child: NotificationListener<ScrollNotification>(
-          onNotification: (notification) {
-            if (notification.depth == 0 &&
-                notification.metrics.axis == Axis.vertical &&
-                notification is ScrollUpdateNotification &&
-                widget.active &&
-                notification.metrics.extentAfter < 600 &&
-                data.hasMore &&
-                _reader.error == null) {
-              _load(false);
-            }
-            return false;
-          },
+        child: NotificationListener<Notification>(
+          onNotification: _onScroll,
           child: CustomScrollView(
             key: PageStorageKey(
               '${AuthStore.instance.activeId}:${widget.query.section?.id ?? widget.query.category}',
