@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tieba/data/local_store.dart';
+import 'package:tieba/data/platform_session.dart';
 import 'package:tieba/data/share_content.dart';
 import 'package:tieba/data/tieba_api.dart';
 import 'package:tieba/pages/reading_page.dart';
@@ -27,13 +28,13 @@ void main() {
     final content = ShareContent.forForum('图拉丁 & 装机', {});
     final calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(ShareContent.channel, (call) async {
+        .setMockMethodCallHandler(PlatformSession.androidChannel, (call) async {
           calls.add(call);
           return null;
         });
     addTearDown(
       () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(ShareContent.channel, null),
+          .setMockMethodCallHandler(PlatformSession.androidChannel, null),
     );
     expect(Uri.parse(content.url).host, 'tieba.baidu.com');
     expect(Uri.parse(content.url).queryParameters['kw'], '图拉丁 & 装机');

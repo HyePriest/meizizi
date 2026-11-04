@@ -11,7 +11,9 @@ import 'app_webview.dart';
 /// Desktop system operations; Android retains its original native channel.
 class PlatformSession {
   const PlatformSession();
-  static const _android = MethodChannel('com.jknl.tieba/session');
+  /// The Android native channel; tests mock it directly.
+  static const androidChannel = MethodChannel('com.jknl.tieba/session');
+  static const _android = androidChannel;
   static const imageTypes = XTypeGroup(
     label: '图片',
     extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'],

@@ -77,11 +77,18 @@ class DirectionalPageDragArea extends StatelessWidget {
             DirectionalHorizontalDragRecognizer
           >(
             () => DirectionalHorizontalDragRecognizer(debugOwner: this),
-            (recognizer) => recognizer
-              ..onUpdate = (details) =>
-                  drag.update(details.delta, details.globalPosition)
-              ..onEnd = (details) => drag.end(details.velocity)
-              ..onCancel = drag.cancel,
+            (recognizer) {
+              // Block bodies: an arrow body here would swallow the next
+              // cascade section and apply it to the callback's void result.
+              recognizer
+                ..onUpdate = (details) {
+                  drag.update(details.delta, details.globalPosition);
+                }
+                ..onEnd = (details) {
+                  drag.end(details.velocity);
+                }
+                ..onCancel = drag.cancel;
+            },
           ),
     },
     child: child,
