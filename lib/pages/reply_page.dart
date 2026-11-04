@@ -1,4 +1,5 @@
 import '../data/platform_session.dart';
+
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -114,8 +115,9 @@ class _ReplyPageState extends State<ReplyPage> {
       _error = null;
     });
     try {
-      final selected = await const PlatformSession()
-          .invokeListMethod<dynamic>('pickReplyImages');
+      final selected = await const PlatformSession().invokeListMethod<dynamic>(
+        'pickReplyImages',
+      );
       if (!mounted) return;
       final images = <_ReplyPhoto>[];
       for (final entry in selected ?? []) {
@@ -153,8 +155,7 @@ class _ReplyPageState extends State<ReplyPage> {
     final content = _text.text.trim();
     if (content.isEmpty && _photos.isEmpty) return;
     if (!AuthStore.instance.isLoggedIn) {
-      await Navigator.of(context)
-          .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
+      await openLoginPage(context);
       if (!mounted) return;
       if (_account.isEmpty && AuthStore.instance.isLoggedIn)
         _account = AuthStore.instance.activeId;

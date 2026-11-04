@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import 'auth_store.dart';
 import 'forum_protocol.dart';
+import 'shared_http_client.dart';
 import 'models.dart';
 import 'post_protocol.dart';
 export 'models.dart';
@@ -20,19 +21,20 @@ class SignSession {
 class TiebaApi {
   TiebaApi({http.Client? client})
     : _ownsClient = client != null,
-      _client = client ?? _acquireClient();
+      _client = client ?? SharedHttpClient.acquire();
   final http.Client _client;
+  // An injected client belongs to this instance; the shared one is released.
   final bool _ownsClient;
-  static http.Client? _sharedClient;
-  static int _clientUsers = 0;
-  static Timer? _clientIdleTimer;
 
-  static http.Client _acquireClient() {
-    _clientIdleTimer?.cancel();
-    _clientIdleTimer = null;
-    _clientUsers++;
-    return _sharedClient ??= http.Client();
-  }
+  /// Sends [request], waiting at most [timeout] for the response to start and
+  /// [readTimeout] (default: [timeout]) for its body.
+  Future<http.Response> _send(
+    http.BaseRequest request,
+    Duration timeout, {
+    Duration? readTimeout,
+  }) async =>
+      http.Response.fromStream(await _client.send(request).timeout(timeout))
+          .timeout(readTimeout ?? timeout);
 
   final AuthStore _auth = AuthStore.instance;
   final Map<String, int> _floors = {};
@@ -109,13 +111,8 @@ class TiebaApi {
     _closed = true;
     if (_ownsClient) {
       _client.close();
-    } else if (--_clientUsers == 0) {
-      // Keep connections warm between routes without retaining them forever.
-      _clientIdleTimer = Timer(const Duration(seconds: 30), () {
-        _sharedClient?.close();
-        _sharedClient = null;
-        _clientIdleTimer = null;
-      });
+    } else {
+      SharedHttpClient.release();
     }
   }
 
@@ -192,9 +189,7 @@ class TiebaApi {
         ..followRedirects = false
         ..headers['User-Agent'] = 'bdtb for Android ${body['_client_version']}'
         ..bodyFields = body;
-      final response = await http.Response.fromStream(
-        await _client.send(request).timeout(const Duration(seconds: 25)),
-      ).timeout(const Duration(seconds: 25));
+      final response = await _send(request, const Duration(seconds: 25));
       final data = _decode(response, writing: writing);
       if (writing && flag(data['need_vcode'])) {
         throw const TiebaException('需要验证码，请在官方页面完成验证后再发送');
@@ -227,9 +222,7 @@ class TiebaApi {
         ..headers['User-Agent'] = 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36'
         ..headers['Referer'] = 'https://tieba.baidu.com/';
       if (cookie.isNotEmpty) request.headers['Cookie'] = cookie;
-      final response = await http.Response.fromStream(
-        await _client.send(request).timeout(const Duration(seconds: 20)),
-      ).timeout(const Duration(seconds: 20));
+      final response = await _send(request, const Duration(seconds: 20));
       if ([301, 302, 303, 307, 308].contains(response.statusCode)) {
         final location = response.headers['location'];
         if (location == null) break;
@@ -797,9 +790,7 @@ class TiebaApi {
                 filename: 'file',
               ),
             );
-      final response = await http.Response.fromStream(
-        await _client.send(request).timeout(const Duration(seconds: 25)),
-      ).timeout(const Duration(seconds: 25));
+      final response = await _send(request, const Duration(seconds: 25));
       if (response.statusCode != 200) {
         throw const TiebaException('投票结果未确认，请刷新帖子核对后再操作', uncertain: true);
       }
@@ -851,9 +842,7 @@ class TiebaApi {
           );
     final cachedFirst = _firstPages['${_auth.activeId}:$id:$onlyAuthor'];
     final results = await Future.wait<Object>([
-      (() async => http.Response.fromStream(
-        await _client.send(request).timeout(const Duration(seconds: 25)),
-      ).timeout(const Duration(seconds: 25)))(),
+      _send(request, const Duration(seconds: 25)),
       if (page == 1)
         cachedFirst != null
             ? Future.value(cachedFirst)
@@ -992,9 +981,7 @@ class TiebaApi {
               filename: 'file',
             ),
           );
-    final response = await http.Response.fromStream(
-      await _client.send(request).timeout(const Duration(seconds: 25)),
-    ).timeout(const Duration(seconds: 25));
+    final response = await _send(request, const Duration(seconds: 25));
     if (response.statusCode != 200) {
       throw TiebaException('服务器返回 ${response.statusCode}');
     }
@@ -1029,9 +1016,7 @@ class TiebaApi {
               filename: 'file',
             ),
           );
-    final response = await http.Response.fromStream(
-      await _client.send(request).timeout(const Duration(seconds: 15)),
-    ).timeout(const Duration(seconds: 15));
+    final response = await _send(request, const Duration(seconds: 15));
     if (response.statusCode != 200) throw const TiebaException('吧务信息加载失败');
     final result = decodeBawuResponse(response.bodyBytes);
     if (number(object(result['error'])['errorno']) != 0)
@@ -1396,9 +1381,11 @@ class TiebaApi {
       http.MultipartFile.fromBytes('chunk', bytes, filename: 'file.$extension'),
     );
     try {
-      final response = await http.Response.fromStream(
-        await _client.send(request).timeout(const Duration(seconds: 60)),
-      ).timeout(const Duration(seconds: 30));
+      final response = await _send(
+        request,
+        const Duration(seconds: 60),
+        readTimeout: const Duration(seconds: 30),
+      );
       final data = _decode(response);
       final id = firstText([data['picId'], object(data['data'])['picId']]);
       if (!RegExp(r'^[A-Za-z0-9_.-]+$').hasMatch(id)) {

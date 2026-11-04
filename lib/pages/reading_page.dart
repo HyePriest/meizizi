@@ -1,41 +1,38 @@
-import '../widgets/app_snack_bar.dart';
-import '../widgets/bow_share_button.dart';
-import '../widgets/shatter_effect.dart';
-import '../widgets/building_content.dart';
-import '../widgets/scroll_away_header.dart';
-import '../widgets/feed_icons.dart';
-
 import 'dart:async';
 import 'dart:io';
-
-import '../features/reading/reading_controller.dart';
-import '../features/reading/reading_viewport.dart';
-import '../features/reading/reading_entry.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 
-import '../data/tieba_api.dart';
 import '../data/auth_store.dart';
 import '../data/local_store.dart';
 import '../data/share_content.dart';
+import '../data/tieba_api.dart';
+import '../features/reading/reading_controller.dart';
+import '../features/reading/reading_entry.dart';
+import '../features/reading/reading_viewport.dart';
+import '../widgets/app_snack_bar.dart';
+import '../widgets/bow_share_button.dart';
+import '../widgets/building_content.dart';
 import '../widgets/comment_card.dart';
 import '../widgets/current_ip_label.dart';
-import '../widgets/post_widgets.dart';
-import '../widgets/forum_widgets.dart';
+import '../widgets/feed_icons.dart';
 import '../widgets/forum_feed_pager.dart';
 import '../widgets/forum_header_card.dart';
+import '../widgets/forum_widgets.dart';
 import '../widgets/like_button.dart';
-import '../widgets/forum_thread_card.dart';
-import '../widgets/thread_thumbnails.dart';
 import '../widgets/poll_card.dart';
 import '../widgets/post_action_bar.dart';
-import 'reply_page.dart';
+import '../widgets/post_widgets.dart';
+import '../widgets/scroll_away_header.dart';
+import '../widgets/shatter_effect.dart';
+import '../widgets/thread_thumbnails.dart';
+import 'forum_details_page.dart';
+import 'forum_poster_page.dart';
+import 'forum_search_page.dart';
 import 'login_page.dart';
 import 'post_report_page.dart';
-import 'forum_details_page.dart';
-import 'forum_search_page.dart';
-import 'forum_poster_page.dart';
+import 'reply_page.dart';
 
 class ReadingPage extends StatefulWidget {
   const ReadingPage({
@@ -99,7 +96,6 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
   late final ScrollController _scroll;
   late String _pageAccount;
   Json _memberInfo = {};
-  int get _page => _reader.data.page;
   bool _onlyAuthor = false;
   bool get _busy => _reader.busy;
   bool get _hasMore => _reader.data.hasMore;
@@ -326,8 +322,7 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
   Future<void> _saveThread() async {
     if (_savingThread || _saveUncertain) return;
     if (!AuthStore.instance.isLoggedIn) {
-      await Navigator.of(context)
-          .push(MaterialPageRoute<void>(builder: (_) => const LoginPage()));
+      await openLoginPage(context);
       return;
     }
     final account = AuthStore.instance.activeId, wasSaved = _saved;
@@ -597,8 +592,7 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
   Future<void> _follow(bool followed) async {
     if (_reader.forumActionsBusy || _reader.forumFollowUncertain) return;
     if (!AuthStore.instance.isLoggedIn) {
-      await Navigator.of(context)
-          .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
+      await openLoginPage(context);
       return;
     }
     final account = AuthStore.instance.activeId;
@@ -691,9 +685,8 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
       } else if (action == 'share') {
         await content.shareLink();
         if (mounted && Platform.isWindows) {
-          ScaffoldMessenger.of(context).showAppSnackBar(
-            const AppSnackBar(content: Text('吧简介与链接已复制')),
-          );
+          ScaffoldMessenger.of(context)
+              .showAppSnackBar(const AppSnackBar(content: Text('吧简介与链接已复制')));
         }
       } else {
         await Navigator.of(context).push(
@@ -1095,8 +1088,7 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
     required bool firstFloor,
   }) async {
     if (!AuthStore.instance.isLoggedIn) {
-      await Navigator.of(context)
-          .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
+      await openLoginPage(context);
       if (!mounted || !AuthStore.instance.isLoggedIn) return;
     }
     if (!mounted) return;
@@ -1268,9 +1260,7 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
                 onVote: (options) async {
                   final auth = AuthStore.instance;
                   if (!auth.isLoggedIn) {
-                    await Navigator.of(context).push<bool>(
-                      MaterialPageRoute(builder: (_) => const LoginPage()),
-                    );
+                    await openLoginPage(context);
                     return false;
                   }
                   final identity = auth.activeId;
@@ -1332,7 +1322,75 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final visibleItems = _items.where((item) => !_blocked(item)).toList();
-    final toolbar = AppBar(
+    final toolbar = _toolbar();
+    final replyBar = _replyBar();
+    return PopScope<void>(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) _rememberPosition();
+      },
+      child: Scaffold(
+        bottomNavigationBar: _bottomBar(toolbar, replyBar),
+        body: _forumBackground(
+          _readingLayout(
+            header: ValueListenableBuilder<double>(
+              valueListenable: _toolbarOffset,
+              child: _building ? replyBar : toolbar,
+              builder: (_, offset, child) => ScrollAwayHeader(
+                offset: !_isForum && !_building ? offset : 0,
+                height: _building ? 36 : (_isForum ? 56 : 48),
+                child: child!,
+              ),
+            ),
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _trackToolbar,
+              child: RefreshIndicator(
+                // In the reversed building list, pulling down at the paging
+                // edge must not reset the floors that have already loaded.
+                notificationPredicate: (notification) =>
+                    !_isForum &&
+                    !_building &&
+                    defaultScrollNotificationPredicate(notification),
+                onRefresh: () => _load(reset: true),
+                child: Opacity(
+                  opacity: _viewport.hidden && !(_isFloor && _initialLoading)
+                      ? 0
+                      : 1,
+                  child: _readingList(
+                    key: _listKey,
+                    controller: _scroll,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: EdgeInsets.fromLTRB(
+                      _isForum ? 12 : 16,
+                      !_isForum && !_building ? 48 : 8,
+                      _isForum ? 12 : 16,
+                      16,
+                    ),
+                    rowIds: visibleItems.map((p) => '${p['id']}').toList(),
+                    itemCount: visibleItems.length + 2,
+                    itemBuilder: (context, index) {
+                      if (index == 0) {
+                        if (_isForum) return _forumListHeader(context);
+                        if (_isFloor) return _floorListHeader(context);
+                        return _threadListHeader(context, visibleItems);
+                      }
+                      if (index == visibleItems.length + 1) {
+                        return _footer(context);
+                      }
+                      return _listRow(context, visibleItems[index - 1]);
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The app bar: forum identity, thread actions or the floor title.
+  AppBar _toolbar() {
+    return AppBar(
       backgroundColor: _isForum ? Colors.transparent : null,
       foregroundColor: _isForum ? Colors.white : null,
       surfaceTintColor: _isForum ? Colors.transparent : null,
@@ -1463,7 +1521,11 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
         if (_isForum) const SizedBox(width: 8),
       ],
     );
-    final replyBar = Padding(
+  }
+
+  /// The "写回复" / "盖楼" button.
+  Widget _replyBar() {
+    return Padding(
       padding: _building
           ? const EdgeInsets.fromLTRB(16, 2, 16, 2)
           : const EdgeInsets.fromLTRB(16, 4, 16, 4),
@@ -1498,334 +1560,228 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
         label: Text(_building ? '盖楼' : '写回复'),
       ),
     );
-    return PopScope<void>(
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) _rememberPosition();
-      },
-      child: Scaffold(
-        bottomNavigationBar: _isForum
-            ? null
-            : _building
-            ? TweenAnimationBuilder<double>(
-                tween: Tween(begin: 1, end: _toolbarHidden ? 0 : 1),
-                duration: MediaQuery.disableAnimationsOf(context)
-                    ? Duration.zero
-                    : const Duration(milliseconds: 190),
-                curve: Curves.easeOutCubic,
-                child: SafeArea(
-                  top: false,
-                  child: SizedBox(height: 48, child: toolbar),
-                ),
-                builder: (_, value, child) => ClipRect(
-                  child: Align(
-                    alignment: Alignment.bottomCenter,
-                    heightFactor: value,
-                    child: IgnorePointer(
-                      ignoring: _toolbarHidden,
-                      child: child,
-                    ),
-                  ),
-                ),
-              )
-            : SafeArea(top: false, child: replyBar),
-        body: _forumBackground(
-          _readingLayout(
-            header: ValueListenableBuilder<double>(
-              valueListenable: _toolbarOffset,
-              child: _building ? replyBar : toolbar,
-              builder: (_, offset, child) => ScrollAwayHeader(
-                offset: !_isForum && !_building ? offset : 0,
-                height: _building ? 36 : (_isForum ? 56 : 48),
-                child: child!,
+  }
+
+  /// Building mode puts the toolbar at the bottom; threads show the reply bar.
+  Widget? _bottomBar(Widget toolbar, Widget replyBar) {
+    return _isForum
+        ? null
+        : _building
+        ? TweenAnimationBuilder<double>(
+            tween: Tween(begin: 1, end: _toolbarHidden ? 0 : 1),
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 190),
+            curve: Curves.easeOutCubic,
+            child: SafeArea(
+              top: false,
+              child: SizedBox(height: 48, child: toolbar),
+            ),
+            builder: (_, value, child) => ClipRect(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                heightFactor: value,
+                child: IgnorePointer(ignoring: _toolbarHidden, child: child),
               ),
             ),
-            child: NotificationListener<ScrollNotification>(
-              onNotification: _trackToolbar,
-              child: RefreshIndicator(
-                // In the reversed building list, pulling down at the paging
-                // edge must not reset the floors that have already loaded.
-                notificationPredicate: (notification) =>
-                    !_isForum &&
-                    !_building &&
-                    defaultScrollNotificationPredicate(notification),
-                onRefresh: () => _load(reset: true),
-                child: Opacity(
-                  opacity: _viewport.hidden && !(_isFloor && _initialLoading)
-                      ? 0
-                      : 1,
-                  child: _readingList(
-                    key: _listKey,
-                    controller: _scroll,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(
-                      _isForum ? 12 : 16,
-                      !_isForum && !_building ? 48 : 8,
-                      _isForum ? 12 : 16,
-                      16,
-                    ),
-                    rowIds: visibleItems.map((p) => '${p['id']}').toList(),
-                    itemCount: visibleItems.length + 2,
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        if (_isForum) {
-                          final forum = _forum;
-                          final sign = object(
-                            object(forum['sign_in_info'])['user_info'],
-                          );
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ForumHeaderCard(
-                                  key: _forumIdentityKey,
-                                  showBackground: false,
-                                  forum: forum,
-                                  name: widget.forum!,
-                                  onDetails: _openForumDetails,
-                                  level: _followed ? _myForumLevel : {},
-                                  levelNames: _levelNames,
-                                  trailing: _reader.forumFollowUncertain
-                                      ? FilledButton.tonal(
-                                          onPressed: _reader.forumActionsBusy
-                                              ? null
-                                              : _refreshForumInfo,
-                                          child: Text(_followed ? '签到' : '关注'),
-                                        )
-                                      : _followed
-                                      ? SignButton(
-                                          key: ValueKey(
-                                            'sign-${AuthStore.instance.activeId}',
-                                          ),
-                                          api: _api,
-                                          enabled:
-                                              !_reader.forumActionsBusy &&
-                                              !_reader.forumFollowUncertain,
-                                          statusRevision:
-                                              _reader.forumStatusRevision,
-                                          onSigningChanged:
-                                              _reader.setForumSigning,
-                                          name: widget.forum!,
-                                          followed: true,
-                                          compact: true,
-                                          signed:
-                                              flag(sign['is_sign_in']) ||
-                                              flag(forum['is_sign_in']),
-                                        )
-                                      : FilledButton.tonal(
-                                          onPressed:
-                                              _reader.forumActionsBusy ||
-                                                  _forum['id'] == null
-                                              ? null
-                                              : () => _follow(true),
-                                          child: Text(
-                                            _reader.forumFollowing
-                                                ? '关注中'
-                                                : '关注',
-                                          ),
-                                        ),
-                                ),
-                                for (final pinned in _pinned)
-                                  Padding(
-                                    key: ValueKey('pinned-${pinned['id']}'),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                    ),
-                                    child: Material(
-                                      color: Colors.transparent,
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: InkWell(
-                                        borderRadius: BorderRadius.circular(8),
-                                        onTap: () => Navigator.of(context).push(
-                                          MaterialPageRoute<void>(
-                                            builder: (_) => ReadingPage(
-                                              forum: widget.forum,
-                                              threadId: '${pinned['id']}',
-                                              title: firstText([
-                                                pinned['title'],
-                                              ]),
-                                              levelNames: _levelNames,
-                                              previewThread: {
-                                                ...pinned,
-                                                'author': _forumUser(
-                                                  _users['${pinned['author_id']}'] ??
-                                                      object(pinned['author']),
-                                                ),
-                                              },
-                                            ),
-                                          ),
-                                        ),
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 4,
-                                            vertical: 8,
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              const Icon(
-                                                Icons.push_pin_rounded,
-                                                size: 14,
-                                                color: Colors.white70,
-                                                semanticLabel: '置顶',
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: Text(
-                                                  firstText([
-                                                    pinned['title'],
-                                                  ], '查看置顶帖'),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: const TextStyle(
-                                                    fontSize: 14,
-                                                    color: Colors.white,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                const SizedBox(height: 2),
-                              ],
-                            ),
-                          );
-                        }
-                        if (_isFloor) {
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (_firstPage > 1)
-                                TextButton(
-                                  onPressed: _busy
-                                      ? null
-                                      : () => _load(
-                                          reset: true,
-                                          pageOverride: _firstPage - 1,
-                                        ),
-                                  child: const Text('查看前面的回复'),
-                                ),
-                              if (_parentPost.isNotEmpty)
-                                if (!_blocked(_parentPost))
-                                  _commentCard(_parentPost, parent: true)
-                                else
-                                  const Padding(
-                                    padding: EdgeInsets.all(16),
-                                    child: Text('原评论作者已被拉黑'),
-                                  ),
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  14,
-                                  10,
-                                  14,
-                                  12,
-                                ),
-                                child: Text(
-                                  '全部回复',
-                                  style: Theme.of(context).textTheme.titleSmall,
-                                ),
-                              ),
-                            ],
-                          );
-                        }
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (_building && _reader.loadingPrevious)
-                                const Padding(
-                                  padding: EdgeInsets.all(16),
-                                  child: Center(
-                                    child: CircularProgressIndicator(),
-                                  ),
-                                ),
-                              if (_building && _reader.previousFailed)
-                                TextButton(
-                                  onPressed: _retryLoad,
-                                  child: const Text('加载失败，点击重试'),
-                                ),
-                              if (!_building && _firstPage > 1)
-                                TextButton(
-                                  onPressed: _busy
-                                      ? null
-                                      : () => _load(
-                                          reset: true,
-                                          pageOverride: _firstPage - 1,
-                                        ),
-                                  child: const Text('查看前面的楼层'),
-                                ),
-                              Text(
-                                _isFloor
-                                    ? (widget.title ?? '楼中楼回复')
-                                    : firstText([
-                                        _thread['title'],
-                                        widget.title,
-                                      ]),
-                                style: Theme.of(context).textTheme.titleLarge
-                                    ?.copyWith(
-                                      fontSize: 21,
-                                      height: 1.35,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                              ),
-                              if (!_building &&
-                                  _result == null &&
-                                  _previewThread != null)
-                                _threadPreview(),
-                              if (_building ||
-                                  !visibleItems.any(
-                                    (p) => number(p['floor']) == 1,
-                                  ))
-                                _replyControls(),
-                            ],
-                          ),
-                        );
-                      }
-                      if (index == visibleItems.length + 1) {
-                        return _footer(context);
-                      }
-                      final item = visibleItems[index - 1];
-                      final user = {
-                        ...?_users['${item['author_id']}'],
-                        ...object(item['author']),
-                      };
-                      final isFirstFloor =
-                          !_isFloor && number(item['floor']) == 1;
-                      final card = KeyedSubtree(
-                        key: _rowKeys.putIfAbsent(
-                          '${item['id']}',
-                          () => GlobalKey(),
-                        ),
-                        child: AnimatedSize(
-                          duration: MediaQuery.disableAnimationsOf(context)
-                              ? Duration.zero
-                              : const Duration(milliseconds: 420),
-                          alignment: Alignment.bottomCenter,
-                          child:
-                              _removing.contains(
-                                userKey(_forumUser(user), item),
-                              )
-                              ? const SizedBox(width: double.infinity)
-                              : _commentCard(item),
-                        ),
-                      );
-                      if (!isFirstFloor) return card;
-                      return Column(
-                        children: [card, if (!_building) _replyControls()],
-                      );
-                    },
+          )
+        : SafeArea(top: false, child: replyBar);
+  }
+
+  /// First list row of a forum: identity card, follow/sign and pinned threads.
+  Widget _forumListHeader(BuildContext context) {
+    final forum = _forum;
+    final sign = object(object(forum['sign_in_info'])['user_info']);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ForumHeaderCard(
+            key: _forumIdentityKey,
+            showBackground: false,
+            forum: forum,
+            name: widget.forum!,
+            onDetails: _openForumDetails,
+            level: _followed ? _myForumLevel : {},
+            levelNames: _levelNames,
+            trailing: _forumFollowAction(forum, sign),
+          ),
+          for (final pinned in _pinned) _pinnedThreadLink(context, pinned),
+          const SizedBox(height: 2),
+        ],
+      ),
+    );
+  }
+
+  /// Follow, sign-in or retry button on the forum identity card.
+  Widget _forumFollowAction(Json forum, Json sign) {
+    return _reader.forumFollowUncertain
+        ? FilledButton.tonal(
+            onPressed: _reader.forumActionsBusy ? null : _refreshForumInfo,
+            child: Text(_followed ? '签到' : '关注'),
+          )
+        : _followed
+        ? SignButton(
+            key: ValueKey('sign-${AuthStore.instance.activeId}'),
+            api: _api,
+            enabled: !_reader.forumActionsBusy && !_reader.forumFollowUncertain,
+            statusRevision: _reader.forumStatusRevision,
+            onSigningChanged: _reader.setForumSigning,
+            name: widget.forum!,
+            followed: true,
+            compact: true,
+            signed: flag(sign['is_sign_in']) || flag(forum['is_sign_in']),
+          )
+        : FilledButton.tonal(
+            onPressed: _reader.forumActionsBusy || _forum['id'] == null
+                ? null
+                : () => _follow(true),
+            child: Text(_reader.forumFollowing ? '关注中' : '关注'),
+          );
+  }
+
+  /// One pinned thread under the forum identity card.
+  Widget _pinnedThreadLink(BuildContext context, Json pinned) {
+    return Padding(
+      key: ValueKey('pinned-${pinned['id']}'),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => ReadingPage(
+                forum: widget.forum,
+                threadId: '${pinned['id']}',
+                title: firstText([pinned['title']]),
+                levelNames: _levelNames,
+                previewThread: {
+                  ...pinned,
+                  'author': _forumUser(
+                    _users['${pinned['author_id']}'] ??
+                        object(pinned['author']),
+                  ),
+                },
+              ),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.push_pin_rounded,
+                  size: 14,
+                  color: Colors.white70,
+                  semanticLabel: '置顶',
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    firstText([pinned['title']], '查看置顶帖'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14, color: Colors.white),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  /// First list row of a floor (楼中楼): the parent comment.
+  Widget _floorListHeader(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_firstPage > 1)
+          TextButton(
+            onPressed: _busy
+                ? null
+                : () => _load(reset: true, pageOverride: _firstPage - 1),
+            child: const Text('查看前面的回复'),
+          ),
+        if (_parentPost.isNotEmpty)
+          if (!_blocked(_parentPost))
+            _commentCard(_parentPost, parent: true)
+          else
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('原评论作者已被拉黑'),
+            ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+          child: Text('全部回复', style: Theme.of(context).textTheme.titleSmall),
+        ),
+      ],
+    );
+  }
+
+  /// First list row of a thread: title, preview and sorting controls.
+  Widget _threadListHeader(BuildContext context, List<Json> visibleItems) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_building && _reader.loadingPrevious)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          if (_building && _reader.previousFailed)
+            TextButton(onPressed: _retryLoad, child: const Text('加载失败，点击重试')),
+          if (!_building && _firstPage > 1)
+            TextButton(
+              onPressed: _busy
+                  ? null
+                  : () => _load(reset: true, pageOverride: _firstPage - 1),
+              child: const Text('查看前面的楼层'),
+            ),
+          Text(
+            firstText([_thread['title'], widget.title]),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              fontSize: 21,
+              height: 1.35,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (!_building && _result == null && _previewThread != null)
+            _threadPreview(),
+          if (_building || !visibleItems.any((p) => number(p['floor']) == 1))
+            _replyControls(),
+        ],
+      ),
+    );
+  }
+
+  /// One post or reply row in the list.
+  Widget _listRow(BuildContext context, Json item) {
+    final user = {
+      ...?_users['${item['author_id']}'],
+      ...object(item['author']),
+    };
+    final isFirstFloor = !_isFloor && number(item['floor']) == 1;
+    final card = KeyedSubtree(
+      key: _rowKeys.putIfAbsent('${item['id']}', () => GlobalKey()),
+      child: AnimatedSize(
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 420),
+        alignment: Alignment.bottomCenter,
+        child: _removing.contains(userKey(_forumUser(user), item))
+            ? const SizedBox(width: double.infinity)
+            : _commentCard(item),
+      ),
+    );
+    if (!isFirstFloor) return card;
+    return Column(children: [card, if (!_building) _replyControls()]);
   }
 
   Widget _readingLayout({required Widget header, required Widget child}) {

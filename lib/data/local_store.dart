@@ -4,23 +4,59 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models.dart';
+import 'serial_tasks.dart';
+
+/// SharedPreferences keys. These names are the on-disk format: never rename.
+abstract final class _Keys {
+  static const replyDraftPrefix = 'reply_draft_';
+  static const readingPositions = 'reading_positions';
+  static const buildingMode = 'building_mode';
+  static const themeMode = 'theme_mode';
+  static const themeColor = 'theme_color';
+  static const buttonColor = 'button_color';
+  static const backgroundColor = 'background_color';
+  static const backgroundFollowsSystem = 'background_follows_system';
+  static const recentForums = 'recent_forums';
+  static const forumKeywords = 'forum_keywords';
+  static const signedForums = 'signed_forums';
+  static const threadHistory = 'thread_history';
+  static const blockedForums = 'blocked_forums';
+  static const blockedUsers = 'blocked_users';
+}
+
+const _defaultAccentColor = 0xff246BCE;
+const _themeModes = ['light', 'dark', 'system'];
 
 class LocalStore extends ChangeNotifier {
   LocalStore._();
   static final instance = LocalStore._();
   late SharedPreferences _prefs;
-  Future<void> _pendingWrite = Future<void>.value();
 
   // Compute each update after the preceding write has committed, so rapid
   // visits, block actions and history clearing cannot overwrite one another.
-  Future<void> _mutate(Future<void> Function() action) {
-    final result = _pendingWrite.then((_) => action());
-    _pendingWrite = result.then<void>(
-      (_) {},
-      onError: (Object _, StackTrace __) {},
-    );
-    return result;
+  final _writes = SerialTasks();
+  Future<void> _mutate(Future<void> Function() action) => _writes.run(action);
+
+  /// Reads a JSON value saved under [key], or [fallback] when it is missing
+  /// or unreadable.
+  T _readJson<T>(
+    String key,
+    String empty,
+    T Function(dynamic) convert,
+    T fallback,
+  ) {
+    try {
+      return convert(jsonDecode(_prefs.getString(key) ?? empty));
+    } catch (_) {
+      return fallback;
+    }
   }
+
+  static Map<String, String> _stringMap(dynamic value) =>
+      object(value).map((k, v) => MapEntry(k, '$v'));
+
+  Future<void> _saveJson(String key, Object value) =>
+      _prefs.setString(key, jsonEncode(value));
 
   List<String> recent = [];
   Map<String, String> blockedForums = {};
@@ -73,12 +109,12 @@ class LocalStore extends ChangeNotifier {
     while (_reading.length > 200) {
       _reading.remove(_reading.keys.first);
     }
-    await _prefs.setString('reading_positions', jsonEncode(_reading));
+    await _saveJson(_Keys.readingPositions, _reading);
   });
 
   bool buildingMode = false;
   Future<void> setBuildingMode(bool value) => _mutate(() async {
-    if (!await _prefs.setBool('building_mode', value)) {
+    if (!await _prefs.setBool(_Keys.buildingMode, value)) {
       throw StateError('无法保存盖楼模式');
     }
     buildingMode = value;
@@ -87,8 +123,8 @@ class LocalStore extends ChangeNotifier {
   });
 
   String themePreference = 'system';
-  int themeColor = 0xff246BCE;
-  int buttonColor = 0xff246BCE;
+  int themeColor = _defaultAccentColor;
+  int buttonColor = _defaultAccentColor;
   int backgroundColor = 0xffF7F8FA;
   bool backgroundFollowsSystem = false;
   final appearanceRevision = ValueNotifier<int>(0);
@@ -103,7 +139,7 @@ class LocalStore extends ChangeNotifier {
   }
 
   Future<void> setButtonColor(int value) => _mutate(() async {
-    if (!await _prefs.setInt('button_color', value)) {
+    if (!await _prefs.setInt(_Keys.buttonColor, value)) {
       throw StateError('无法保存按钮颜色');
     }
     previewButtonColor(value);
@@ -118,10 +154,13 @@ class LocalStore extends ChangeNotifier {
 
   Future<void> setBackgroundColor(int value, {bool followSystem = false}) =>
       _mutate(() async {
-        if (!await _prefs.setInt('background_color', value)) {
+        if (!await _prefs.setInt(_Keys.backgroundColor, value)) {
           throw StateError('无法保存背景颜色');
         }
-        if (!await _prefs.setBool('background_follows_system', followSystem)) {
+        if (!await _prefs.setBool(
+          _Keys.backgroundFollowsSystem,
+          followSystem,
+        )) {
           throw StateError('无法保存背景切换方式');
         }
         previewBackgroundColor(value, followSystem: followSystem);
@@ -134,7 +173,7 @@ class LocalStore extends ChangeNotifier {
   }
 
   Future<void> setThemeColor(int value) => _mutate(() async {
-    if (!await _prefs.setInt('theme_color', value)) {
+    if (!await _prefs.setInt(_Keys.themeColor, value)) {
       throw StateError('无法保存强调色');
     }
     previewThemeColor(value);
@@ -154,64 +193,55 @@ class LocalStore extends ChangeNotifier {
           now ?? DateTime.now(),
         );
         notifyListeners();
-        await _prefs.setString('signed_forums', jsonEncode(_signedForums));
+        await _saveJson(_Keys.signedForums, _signedForums);
       });
 
   Future<void> restore() async {
     _prefs = await SharedPreferences.getInstance();
+    // Reply drafts are no longer kept between launches.
     for (final key
         in _prefs
             .getKeys()
-            .where((key) => key.startsWith('reply_draft_'))
+            .where((key) => key.startsWith(_Keys.replyDraftPrefix))
             .toList()) {
       await _prefs.remove(key);
     }
-    try {
-      _reading = object(
-        jsonDecode(_prefs.getString('reading_positions') ?? '{}'),
-      );
-    } catch (_) {
-      _reading = {};
-    }
-    buildingMode = _prefs.getBool('building_mode') ?? false;
-    final theme = _prefs.getString('theme_mode');
+    _reading = _readJson(
+      _Keys.readingPositions,
+      '{}',
+      object,
+      <String, dynamic>{},
+    );
+    buildingMode = _prefs.getBool(_Keys.buildingMode) ?? false;
+    final theme = _prefs.getString(_Keys.themeMode);
     backgroundFollowsSystem =
-        _prefs.getBool('background_follows_system') ?? false;
+        _prefs.getBool(_Keys.backgroundFollowsSystem) ?? false;
     backgroundColor =
-        (_prefs.getInt('background_color') ??
+        (_prefs.getInt(_Keys.backgroundColor) ??
             (theme == 'dark' ? 0xff181818 : 0xffF7F8FA)) |
         0xff000000;
-    themeColor = (_prefs.getInt('theme_color') ?? 0xff246BCE) | 0xff000000;
-    buttonColor = (_prefs.getInt('button_color') ?? themeColor) | 0xff000000;
+    themeColor =
+        (_prefs.getInt(_Keys.themeColor) ?? _defaultAccentColor) | 0xff000000;
+    buttonColor = (_prefs.getInt(_Keys.buttonColor) ?? themeColor) | 0xff000000;
     // Import the old shared color once; later launches must not follow changes
     // to the independently saved accent color.
-    if (!_prefs.containsKey('button_color')) {
-      await _prefs.setInt('button_color', buttonColor);
+    if (!_prefs.containsKey(_Keys.buttonColor)) {
+      await _prefs.setInt(_Keys.buttonColor, buttonColor);
     }
-    themePreference = ['light', 'dark', 'system'].contains(theme)
-        ? theme!
-        : 'system';
-    recent = _prefs.getStringList('recent_forums') ?? [];
-    forumKeywords = _prefs.getStringList('forum_keywords') ?? [];
+    themePreference = _themeModes.contains(theme) ? theme! : 'system';
+    recent = _prefs.getStringList(_Keys.recentForums) ?? [];
+    forumKeywords = _prefs.getStringList(_Keys.forumKeywords) ?? [];
+    _signedForums = _readJson(_Keys.signedForums, '{}', _stringMap, {});
+    history = _readJson(_Keys.threadHistory, '[]', objects, <Json>[]);
+    // The two block lists were historically restored together: if either is
+    // unreadable, both start empty.
     try {
-      _signedForums = object(
-        jsonDecode(_prefs.getString('signed_forums') ?? '{}'),
-      ).map((k, v) => MapEntry(k, '$v'));
-    } catch (_) {
-      _signedForums = {};
-    }
-    try {
-      history = objects(jsonDecode(_prefs.getString('thread_history') ?? '[]'));
-    } catch (_) {
-      history = [];
-    }
-    try {
-      blockedForums = object(
-        jsonDecode(_prefs.getString('blocked_forums') ?? '{}'),
-      ).map((k, v) => MapEntry(k, '$v'));
-      blockedUsers = object(
-        jsonDecode(_prefs.getString('blocked_users') ?? '{}'),
-      ).map((k, v) => MapEntry(k, '$v'));
+      blockedForums = _stringMap(
+        jsonDecode(_prefs.getString(_Keys.blockedForums) ?? '{}'),
+      );
+      blockedUsers = _stringMap(
+        jsonDecode(_prefs.getString(_Keys.blockedUsers) ?? '{}'),
+      );
     } catch (_) {
       blockedForums = {};
       blockedUsers = {};
@@ -222,7 +252,7 @@ class LocalStore extends ChangeNotifier {
     if (name.trim().isEmpty) return;
     if (recent.isNotEmpty && recent.first == name) return;
     final updated = [name, ...recent.where((n) => n != name)].take(20).toList();
-    await _prefs.setStringList('recent_forums', updated);
+    await _prefs.setStringList(_Keys.recentForums, updated);
     recent = updated;
     notifyListeners();
   });
@@ -241,8 +271,8 @@ class LocalStore extends ChangeNotifier {
       blockedUsers.isNotEmpty && blockedUsers.containsKey(userKey(user, post));
 
   Future<void> setTheme(String mode) => _mutate(() async {
-    if (!['light', 'dark', 'system'].contains(mode)) return;
-    await _prefs.setString('theme_mode', mode);
+    if (!_themeModes.contains(mode)) return;
+    await _prefs.setString(_Keys.themeMode, mode);
     themePreference = mode;
     notifyListeners();
   });
@@ -259,16 +289,16 @@ class LocalStore extends ChangeNotifier {
           },
           ...history.where((entry) => '${entry['id']}' != id),
         ].take(200).toList();
-        await _prefs.setString('thread_history', jsonEncode(updated));
+        await _saveJson(_Keys.threadHistory, updated);
         history = updated;
         notifyListeners();
       });
 
   Future<void> clearHistory() => _mutate(() async {
     clearReadingPages();
-    await _prefs.remove('thread_history');
-    await _prefs.remove('recent_forums');
-    await _prefs.remove('reading_positions');
+    await _prefs.remove(_Keys.threadHistory);
+    await _prefs.remove(_Keys.recentForums);
+    await _prefs.remove(_Keys.readingPositions);
     _reading = {};
     history = [];
     recent = [];
@@ -282,14 +312,14 @@ class LocalStore extends ChangeNotifier {
       return;
     }
     final updated = [...forumKeywords, word];
-    await _prefs.setStringList('forum_keywords', updated);
+    await _prefs.setStringList(_Keys.forumKeywords, updated);
     forumKeywords = updated;
     notifyListeners();
   });
 
   Future<void> removeForumKeyword(String word) => _mutate(() async {
     final updated = forumKeywords.where((v) => v != word).toList();
-    await _prefs.setStringList('forum_keywords', updated);
+    await _prefs.setStringList(_Keys.forumKeywords, updated);
     forumKeywords = updated;
     notifyListeners();
   });
@@ -298,7 +328,7 @@ class LocalStore extends ChangeNotifier {
     final updated = Map<String, String>.of(blockedForums)
       ..remove(name.toLowerCase());
     updated[name.toLowerCase()] = name;
-    await _prefs.setString('blocked_forums', jsonEncode(updated));
+    await _saveJson(_Keys.blockedForums, updated);
     blockedForums = updated;
     notifyListeners();
   });
@@ -307,7 +337,7 @@ class LocalStore extends ChangeNotifier {
     if (key.isEmpty) return;
     final updated = Map<String, String>.of(blockedUsers)..remove(key);
     updated[key] = name;
-    await _prefs.setString('blocked_users', jsonEncode(updated));
+    await _saveJson(_Keys.blockedUsers, updated);
     blockedUsers = updated;
     notifyListeners();
   });
@@ -315,10 +345,7 @@ class LocalStore extends ChangeNotifier {
   Future<void> unblock(String key, {required bool forum}) => _mutate(() async {
     final updated = Map<String, String>.of(forum ? blockedForums : blockedUsers)
       ..remove(key);
-    await _prefs.setString(
-      forum ? 'blocked_forums' : 'blocked_users',
-      jsonEncode(updated),
-    );
+    await _saveJson(forum ? _Keys.blockedForums : _Keys.blockedUsers, updated);
     if (forum) {
       blockedForums = updated;
     } else {

@@ -152,8 +152,7 @@ class _SignButtonState extends State<SignButton> {
     if (_busy || !widget.followed || !widget.enabled) return;
     final auth = AuthStore.instance;
     if (!auth.isLoggedIn) {
-      final logged = await Navigator.of(context)
-          .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
+      final logged = await openLoginPage(context);
       if (logged != true || !mounted) return;
     }
     final identity = auth.bduss;
