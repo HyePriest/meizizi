@@ -81,8 +81,7 @@ class _LikeButtonState extends State<LikeButton>
     }
     final auth = AuthStore.instance;
     if (!auth.isLoggedIn) {
-      await Navigator.of(context)
-          .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
+      await openLoginPage(context);
       // The reading page reloads after login; use the refreshed state on the next tap.
       return;
     }

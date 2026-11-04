@@ -23,9 +23,7 @@ class ProfilePage extends StatelessWidget {
     listenable: AuthStore.instance,
     builder: (context, _) {
       final auth = AuthStore.instance;
-      void login() =>
-          Navigator.of(context)
-              .push(MaterialPageRoute<void>(builder: (_) => const LoginPage()));
+      void login() => openLoginPage(context);
       void content(MyContent kind) {
         if (!auth.isLoggedIn) {
           login();
@@ -44,7 +42,9 @@ class ProfilePage extends StatelessWidget {
               contentPadding: const EdgeInsets.all(16),
               leading: UserAvatar(user: auth.user, size: 52),
               title: Text(auth.isLoggedIn ? author(auth.user) : '游客模式'),
-              subtitle: Text(auth.isLoggedIn ? '查看个人主页、关注和吧龄' : '点击登录，使用点赞、回复和收藏'),
+              subtitle: Text(
+                auth.isLoggedIn ? '查看个人主页、关注和吧龄' : '点击登录，使用点赞、回复和收藏',
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 if (auth.isLoggedIn) {
@@ -107,9 +107,7 @@ class ProfilePage extends StatelessWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () async {
               if (!auth.isLoggedIn) {
-                await Navigator.of(context).push<bool>(
-                  MaterialPageRoute(builder: (_) => const LoginPage()),
-                );
+                await openLoginPage(context);
               }
               if (!context.mounted || !auth.isLoggedIn) return;
               Navigator.of(context).push(
@@ -233,8 +231,7 @@ class _MessageEntryState extends State<MessageEntry>
     trailing: const Icon(Icons.chevron_right),
     onTap: () async {
       if (!AuthStore.instance.isLoggedIn) {
-        await Navigator.of(context)
-            .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
+        await openLoginPage(context);
       }
       if (!context.mounted || !AuthStore.instance.isLoggedIn) return;
       await Navigator.of(context)
@@ -267,8 +264,7 @@ class _SettingsContentState extends State<SettingsContent> {
   Future<void> _add() => _action(() async {
     await AuthStore.instance.prepareNewLogin();
     if (mounted) {
-      await Navigator.of(context)
-          .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
+      await openLoginPage(context);
     }
   });
   @override
@@ -287,7 +283,9 @@ class _SettingsContentState extends State<SettingsContent> {
             child: ListTile(
               leading: const Icon(Icons.person_outline),
               title: const Text('游客模式'),
-              subtitle: Text(auth.isGuest ? '当前模式 · 可浏览、搜索和查看帖子' : '暂不使用账号，保留已保存的账号'),
+              subtitle: Text(
+                auth.isGuest ? '当前模式 · 可浏览、搜索和查看帖子' : '暂不使用账号，保留已保存的账号',
+              ),
               trailing: auth.isGuest ? const Icon(Icons.check) : null,
               onTap: _busy || auth.isGuest
                   ? null

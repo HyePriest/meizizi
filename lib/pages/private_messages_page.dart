@@ -1,4 +1,5 @@
 import '../data/platform_session.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -84,8 +85,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   }
 
   Future<void> _login() async {
-    await Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => const LoginPage()));
+    await openLoginPage(context);
     if (mounted && !_busy) _load(reset: true);
   }
 
@@ -449,8 +449,9 @@ class _PrivateChatPageState extends State<_PrivateChatPage> {
                     ? null
                     : () async {
                         try {
-                          await const PlatformSession()
-                              .invokeMethod('openOfficialTieba');
+                          await const PlatformSession().invokeMethod(
+                            'openOfficialTieba',
+                          );
                         } catch (_) {
                           if (context.mounted)
                             ScaffoldMessenger.of(context).showAppSnackBar(

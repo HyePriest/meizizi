@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
+
 import '../data/app_webview.dart';
+
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 import '../data/auth_store.dart';
 import '../data/tieba_api.dart';
+
+/// Opens the login page. Completes with `true` after a successful login.
+Future<bool?> openLoginPage(BuildContext context) =>
+    Navigator.of(context)
+        .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, this.verificationUrl});

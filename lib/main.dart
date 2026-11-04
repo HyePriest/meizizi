@@ -1,18 +1,16 @@
-import 'package:flutter/material.dart';
-
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
 
-import 'pages/home_page.dart';
-
+import 'data/app_update.dart';
+import 'data/app_webview.dart';
 import 'data/auth_store.dart';
 import 'data/local_store.dart';
-import 'data/app_update.dart';
 import 'data/theme_colors.dart';
-import 'data/app_webview.dart';
+import 'pages/home_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,38 +36,38 @@ class TiebaApp extends StatefulWidget {
   State<TiebaApp> createState() => _TiebaAppState();
 }
 
+/// The saved colors that decide the app theme.
+typedef _Appearance = ({
+  int background,
+  bool followSystem,
+  int accent,
+  int button,
+});
+
+_Appearance _savedAppearance() {
+  final store = LocalStore.instance;
+  return (
+    background: store.backgroundColor,
+    followSystem: store.backgroundFollowsSystem,
+    accent: store.themeColor,
+    button: store.buttonColor,
+  );
+}
+
 class _TiebaAppState extends State<TiebaApp> {
-  late int _backgroundColor;
-  late bool _backgroundFollowsSystem;
-  late int _themeColor;
-  late int _buttonColor;
+  _Appearance _appearance = _savedAppearance();
+
   @override
   void initState() {
     super.initState();
-    _backgroundColor = LocalStore.instance.backgroundColor;
-    _backgroundFollowsSystem = LocalStore.instance.backgroundFollowsSystem;
-    _themeColor = LocalStore.instance.themeColor;
-    _buttonColor = LocalStore.instance.buttonColor;
     LocalStore.instance.addListener(_changed);
     LocalStore.instance.appearanceRevision.addListener(_changed);
   }
 
+  // Rebuild the whole app only when a theme color actually changed.
   void _changed() {
-    final background = LocalStore.instance.backgroundColor;
-    final followSystem = LocalStore.instance.backgroundFollowsSystem;
-    final color = LocalStore.instance.themeColor;
-    final button = LocalStore.instance.buttonColor;
-    if (_backgroundColor != background ||
-        _backgroundFollowsSystem != followSystem ||
-        _themeColor != color ||
-        _buttonColor != button) {
-      setState(() {
-        _backgroundColor = background;
-        _backgroundFollowsSystem = followSystem;
-        _themeColor = color;
-        _buttonColor = button;
-      });
-    }
+    final next = _savedAppearance();
+    if (next != _appearance) setState(() => _appearance = next);
   }
 
   @override
@@ -81,7 +79,7 @@ class _TiebaAppState extends State<TiebaApp> {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    themeMode: _backgroundFollowsSystem ? ThemeMode.system : ThemeMode.light,
+    themeMode: _appearance.followSystem ? ThemeMode.system : ThemeMode.light,
     themeAnimationDuration: Duration.zero,
     title: '美滋滋',
     debugShowCheckedModeBanner: false,
@@ -89,22 +87,22 @@ class _TiebaAppState extends State<TiebaApp> {
     supportedLocales: const [Locale('zh', 'CN')],
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
     theme: appTheme(
-      Color(_themeColor),
-      !_backgroundFollowsSystem &&
-              Color(_backgroundColor).computeLuminance() <= .179
+      Color(_appearance.accent),
+      !_appearance.followSystem &&
+              Color(_appearance.background).computeLuminance() <= .179
           ? Brightness.dark
           : Brightness.light,
       background: Color(
-        _backgroundFollowsSystem ? 0xffffffff : _backgroundColor,
+        _appearance.followSystem ? 0xffffffff : _appearance.background,
       ),
-      button: Color(_buttonColor),
+      button: Color(_appearance.button),
     ),
-    darkTheme: _backgroundFollowsSystem
+    darkTheme: _appearance.followSystem
         ? appTheme(
-            Color(_themeColor),
+            Color(_appearance.accent),
             Brightness.dark,
             background: Colors.black,
-            button: Color(_buttonColor),
+            button: Color(_appearance.button),
           )
         : null,
     home: const HomePage(),

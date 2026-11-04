@@ -190,8 +190,7 @@ class _HomePageState extends State<HomePage>
   Future<void> _bulkSign() async {
     FocusScope.of(context).unfocus();
     if (!AuthStore.instance.isLoggedIn) {
-      final logged = await Navigator.of(context)
-          .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
+      final logged = await openLoginPage(context);
       if (logged != true || !mounted) return;
     }
     final task = BulkSignTask.instance;
@@ -470,12 +469,7 @@ class _HomePageState extends State<HomePage>
                             children: [
                               const Text('登录后查看已关注的吧并签到'),
                               TextButton(
-                                onPressed: () => Navigator.of(context)
-                                    .push<bool>(
-                                      MaterialPageRoute(
-                                        builder: (_) => const LoginPage(),
-                                      ),
-                                    ),
+                                onPressed: () => openLoginPage(context),
                                 child: const Text('登录'),
                               ),
                             ],

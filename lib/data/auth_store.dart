@@ -1,30 +1,30 @@
-import 'platform_session.dart';
 import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'app_webview.dart';
 
+import 'app_webview.dart';
 import 'models.dart';
+import 'platform_session.dart';
+import 'serial_tasks.dart';
 
 class AuthStore extends ChangeNotifier {
   AuthStore._();
   static final instance = AuthStore._();
   static const native = PlatformSession();
   static const _storage = FlutterSecureStorage();
+  // Secure-storage keys. These names are the on-disk format: never rename.
+  static const _deviceIdKey = 'anonymous_device_id';
+  static const _accountsKey = 'baidu_accounts';
+  static const _legacySessionKey = 'baidu_session';
   List<Json> _accounts = [];
   String _active = '';
-  Future<void> _pendingChange = Future<void>.value();
 
-  Future<void> _change(Future<void> Function() action) {
-    final result = _pendingChange.then((_) => action());
-    _pendingChange = result.then<void>(
-      (_) {},
-      onError: (Object _, StackTrace __) {},
-    );
-    return result;
-  }
+  // Account changes run one at a time so a switch cannot interleave with a
+  // login or removal.
+  final _changes = SerialTasks();
+  Future<void> _change(Future<void> Function() action) => _changes.run(action);
 
   List<Json> get accounts =>
       _accounts.map((a) => {'id': a['id'], 'user': object(a['user'])}).toList();
@@ -49,23 +49,23 @@ class AuthStore extends ChangeNotifier {
 
   Future<void> restore() async {
     try {
-      final savedDevice = await _storage.read(key: 'anonymous_device_id');
+      final savedDevice = await _storage.read(key: _deviceIdKey);
       if (savedDevice != null && savedDevice.isNotEmpty) {
         deviceId = savedDevice;
       } else {
-        await _storage.write(key: 'anonymous_device_id', value: deviceId);
+        await _storage.write(key: _deviceIdKey, value: deviceId);
       }
     } catch (_) {
       // Browsing can still use this launch's random ID if storage is unavailable.
     }
     try {
-      final saved = await _storage.read(key: 'baidu_accounts');
+      final saved = await _storage.read(key: _accountsKey);
       if (saved != null) {
         final data = object(jsonDecode(saved));
         _accounts = objects(data['accounts']);
         _active = '${data['active'] ?? ''}';
       } else {
-        final legacy = await _storage.read(key: 'baidu_session');
+        final legacy = await _storage.read(key: _legacySessionKey);
         if (legacy != null) {
           final data = object(jsonDecode(legacy));
           final profile = object(data['user']);
@@ -75,7 +75,7 @@ class AuthStore extends ChangeNotifier {
           ];
           _active = id;
           await _persist(_accounts, _active);
-          await _storage.delete(key: 'baidu_session');
+          await _storage.delete(key: _legacySessionKey);
         }
       }
     } catch (_) {
@@ -85,9 +85,17 @@ class AuthStore extends ChangeNotifier {
   }
 
   Future<void> _persist(List<Json> accounts, String active) => _storage.write(
-    key: 'baidu_accounts',
+    key: _accountsKey,
     value: jsonEncode({'accounts': accounts, 'active': active}),
   );
+  static Future<void> _setBaiduCookie(
+    WebViewCookieManager manager,
+    String name,
+    String value,
+  ) => manager.setCookie(
+    WebViewCookie(name: name, value: value, domain: '.baidu.com', path: '/'),
+  );
+
   Future<Map<String, String>> webCookies() async =>
       await native.invokeMapMethod<String, String>('getBaiduCookies') ?? {};
   Future<void> prepareNewLogin() =>
@@ -100,14 +108,7 @@ class AuthStore extends ChangeNotifier {
     final manager = WebViewCookieManager();
     for (final entry in cookies.entries) {
       if (_active != identity) throw const TiebaException('账号已切换，请重新打开');
-      await manager.setCookie(
-        WebViewCookie(
-          name: entry.key,
-          value: entry.value,
-          domain: '.baidu.com',
-          path: '/',
-        ),
-      );
+      await _setBaiduCookie(manager, entry.key, entry.value);
     }
   }
 
@@ -122,7 +123,7 @@ class AuthStore extends ChangeNotifier {
         await _persist(updated, id);
         _accounts = updated;
         _active = id;
-        await _storage.delete(key: 'baidu_session');
+        await _storage.delete(key: _legacySessionKey);
         notifyListeners();
       });
 
@@ -136,14 +137,7 @@ class AuthStore extends ChangeNotifier {
     final manager = WebViewCookieManager();
     await manager.clearCookies();
     for (final entry in object(account['cookies']).entries) {
-      await manager.setCookie(
-        WebViewCookie(
-          name: entry.key,
-          value: '${entry.value}',
-          domain: '.baidu.com',
-          path: '/',
-        ),
-      );
+      await _setBaiduCookie(manager, entry.key, '${entry.value}');
     }
     await _persist(_accounts, id);
     _active = id;

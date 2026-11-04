@@ -114,14 +114,11 @@ class UserHeader extends StatelessWidget {
 }
 
 class _IdentityBadge extends StatelessWidget {
-  const _IdentityBadge({
-    required this.label,
-    required this.color,
-    this.fontSize = 9,
-  });
+  const _IdentityBadge({required this.label, required this.color});
   final String label;
   final Color color;
-  final double fontSize;
+  // Every badge uses the same small label size.
+  static const fontSize = 9.0;
   @override
   Widget build(BuildContext context) {
     final ink = Theme.of(context).brightness == Brightness.dark
