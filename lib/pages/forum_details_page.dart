@@ -6,6 +6,7 @@ import '../features/reading/reading_controller.dart';
 import '../widgets/forum_header_card.dart';
 import '../widgets/post_widgets.dart';
 import 'user_page.dart';
+import '../widgets/desktop_layout.dart';
 
 class ForumDetailsPage extends StatefulWidget {
   const ForumDetailsPage({
@@ -173,7 +174,10 @@ class _ForumDetailsPageState extends State<ForumDetailsPage> {
   );
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
+  Widget build(BuildContext context) =>
+      DesktopFrame(child: _buildPage(context));
+
+  Widget _buildPage(BuildContext context) => ListenableBuilder(
     listenable: Listenable.merge([widget.reader, AuthStore.instance]),
     builder: (context, _) {
       final user = object(widget.reader.data.result?.data['user']);
@@ -384,7 +388,10 @@ class ForumRulePage extends StatelessWidget {
   final Json rules;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) =>
+      DesktopFrame(child: _buildPage(context));
+
+  Widget _buildPage(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('吧规')),
     body: ListView(
       padding: const EdgeInsets.all(20),

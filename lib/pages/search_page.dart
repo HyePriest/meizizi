@@ -10,6 +10,7 @@ import '../widgets/liquid_feed_switcher.dart';
 import '../widgets/post_widgets.dart';
 import 'reading_page.dart';
 import 'user_page.dart';
+import '../widgets/desktop_layout.dart';
 
 class _SearchBucket {
   List<Json> items = [];
@@ -470,7 +471,10 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) =>
+      DesktopFrame(child: _buildPage(context));
+
+  Widget _buildPage(BuildContext context) => Scaffold(
     backgroundColor: Theme.of(context).colorScheme.surface,
     body: SafeArea(
       bottom: false,

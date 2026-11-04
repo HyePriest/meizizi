@@ -5,6 +5,7 @@ import '../widgets/post_widgets.dart';
 import '../widgets/thread_thumbnails.dart';
 import 'reading_page.dart';
 import 'user_connections_page.dart';
+import '../widgets/desktop_layout.dart';
 
 void openUser(BuildContext context, Json user) {
   if (firstText([user['id'], user['user_id'], user['portrait']]).isEmpty) {
@@ -97,7 +98,14 @@ class _UserPageState extends State<UserPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => DesktopFrame(
+    child: DesktopRefreshShortcut(
+      onRefresh: () => _load(reset: true),
+      child: _buildPage(context),
+    ),
+  );
+
+  Widget _buildPage(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('用户主页')),
     body: RefreshIndicator(
       onRefresh: () => _load(reset: true),

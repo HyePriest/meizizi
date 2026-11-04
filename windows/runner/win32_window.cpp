@@ -26,6 +26,11 @@ constexpr const wchar_t kGetPreferredBrightnessRegKey[] =
   L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
 constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme";
 
+/// Smallest window size, in logical pixels, that still fits the app's
+/// single-column layout without crowding.
+constexpr int kMinimumWidth = 480;
+constexpr int kMinimumHeight = 560;
+
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
 
@@ -204,6 +209,16 @@ Win32Window::MessageHandler(HWND hwnd,
         MoveWindow(child_content_, rect.left, rect.top, rect.right - rect.left,
                    rect.bottom - rect.top, TRUE);
       }
+      return 0;
+    }
+
+    case WM_GETMINMAXINFO: {
+      // Keep the window large enough for the single-column layout.
+      auto info = reinterpret_cast<MINMAXINFO*>(lparam);
+      HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+      double scale_factor = FlutterDesktopGetDpiForMonitor(monitor) / 96.0;
+      info->ptMinTrackSize.x = Scale(kMinimumWidth, scale_factor);
+      info->ptMinTrackSize.y = Scale(kMinimumHeight, scale_factor);
       return 0;
     }
 

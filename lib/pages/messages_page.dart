@@ -5,11 +5,15 @@ import '../data/local_store.dart';
 import '../data/tieba_api.dart';
 import '../widgets/post_widgets.dart';
 import 'reading_page.dart';
+import '../widgets/desktop_layout.dart';
 
 class MessagesPage extends StatelessWidget {
   const MessagesPage({super.key});
   @override
-  Widget build(BuildContext context) => DefaultTabController(
+  Widget build(BuildContext context) =>
+      DesktopFrame(child: _buildPage(context));
+
+  Widget _buildPage(BuildContext context) => DefaultTabController(
     length: 3,
     child: Scaffold(
       appBar: AppBar(

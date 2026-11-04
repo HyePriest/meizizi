@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/models.dart';
+import 'desktop_layout.dart';
 import 'feed_list_item.dart';
 import 'forum_widgets.dart';
 import 'home_forum_stats.dart';
@@ -81,26 +82,31 @@ class HomeThreadCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Transform.translate(
-                    offset: const Offset(0, -6),
-                    child: PopupMenuButton<VoidCallback>(
-                      tooltip: '屏蔽内容',
-                      icon: const Icon(Icons.close, size: 20),
-                      // Keep the target that was displayed when the menu opened,
-                      // even if the card rebuilds while the popup is visible.
-                      onSelected: (block) => block(),
-                      itemBuilder: (_) => [
-                        PopupMenuItem(
-                          value: () => onBlock('forum'),
-                          enabled: forum.isNotEmpty,
-                          child: Text(forum.isEmpty ? '无法取得所属吧' : '屏蔽 $forum吧'),
-                        ),
-                        PopupMenuItem(
-                          value: () => onBlock('user'),
-                          enabled: userKey(user, thread).isNotEmpty,
-                          child: Text('屏蔽 ${author(user)}'),
-                        ),
-                      ],
+                  // Desktop: shown only while the mouse is over the card.
+                  ShowOnHover(
+                    child: Transform.translate(
+                      offset: const Offset(0, -6),
+                      child: PopupMenuButton<VoidCallback>(
+                        tooltip: '屏蔽内容',
+                        icon: const Icon(Icons.close, size: 20),
+                        // Keep the target that was displayed when the menu opened,
+                        // even if the card rebuilds while the popup is visible.
+                        onSelected: (block) => block(),
+                        itemBuilder: (_) => [
+                          PopupMenuItem(
+                            value: () => onBlock('forum'),
+                            enabled: forum.isNotEmpty,
+                            child: Text(
+                              forum.isEmpty ? '无法取得所属吧' : '屏蔽 $forum吧',
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: () => onBlock('user'),
+                            enabled: userKey(user, thread).isNotEmpty,
+                            child: Text('屏蔽 ${author(user)}'),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],

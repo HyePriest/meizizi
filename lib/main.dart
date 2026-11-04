@@ -11,6 +11,7 @@ import 'data/auth_store.dart';
 import 'data/local_store.dart';
 import 'data/theme_colors.dart';
 import 'pages/home_page.dart';
+import 'widgets/desktop_layout.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -56,6 +57,7 @@ _Appearance _savedAppearance() {
 
 class _TiebaAppState extends State<TiebaApp> {
   _Appearance _appearance = _savedAppearance();
+  final _navigator = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -79,6 +81,9 @@ class _TiebaAppState extends State<TiebaApp> {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
+    navigatorKey: _navigator,
+    builder: (context, child) =>
+        DesktopNavigationInput(navigatorKey: _navigator, child: child!),
     themeMode: _appearance.followSystem ? ThemeMode.system : ThemeMode.light,
     themeAnimationDuration: Duration.zero,
     title: '美滋滋',

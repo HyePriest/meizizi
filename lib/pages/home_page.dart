@@ -1,11 +1,12 @@
 import '../widgets/adaptive_feed.dart';
+import '../widgets/desktop_layout.dart';
 import '../widgets/app_snack_bar.dart';
 
 import 'package:flutter/material.dart';
 
 import '../data/auth_store.dart';
 import '../data/local_store.dart';
-import '../data/models.dart';
+import '../data/tieba_api.dart';
 import '../features/home/home_controller.dart';
 import '../data/share_content.dart';
 import '../widgets/forum_widgets.dart';
@@ -22,14 +23,17 @@ import '../widgets/liquid_feed_switcher.dart';
 import '../widgets/top_refresh_overlay.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.api});
+
+  /// Replaces the network client, for tests and previews.
+  final TiebaApi? api;
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
-  final _feed = HomeController();
+  late final _feed = HomeController(api: widget.api);
   final _search = TextEditingController();
   final _searchFocus = FocusNode();
   final _shatterKeys = <String, GlobalKey>{};
@@ -559,33 +563,50 @@ class _HomePageState extends State<HomePage>
     return false;
   }
 
-  Widget _searchBox() => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 5, 12, 5),
-    child: SizedBox(
-      height: 38,
-      child: TextField(
-        controller: _search,
-        focusNode: _searchFocus,
-        onTapOutside: (_) => _searchFocus.unfocus(),
-        textInputAction: TextInputAction.search,
-        onSubmitted: _searchFor,
-        style: const TextStyle(fontSize: 14),
-        decoration: InputDecoration(
-          prefixIcon: const Icon(Icons.search, size: 20),
-          filled: true,
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 8,
-          ),
-          border: OutlineInputBorder(
-            borderSide: BorderSide.none,
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
+  Widget _searchField() => TextField(
+    controller: _search,
+    focusNode: _searchFocus,
+    onTapOutside: (_) => _searchFocus.unfocus(),
+    textInputAction: TextInputAction.search,
+    onSubmitted: _searchFor,
+    style: const TextStyle(fontSize: 14),
+    decoration: InputDecoration(
+      prefixIcon: const Icon(Icons.search, size: 20),
+      filled: true,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      border: OutlineInputBorder(
+        borderSide: BorderSide.none,
+        borderRadius: BorderRadius.circular(12),
       ),
     ),
   );
+
+  Widget _searchBox() {
+    final field = Padding(
+      padding: const EdgeInsets.fromLTRB(12, 5, 12, 5),
+      child: SizedBox(height: 38, child: _searchField()),
+    );
+    if (!isDesktop) return field;
+    // Desktop: a search box of reasonable width, with a refresh button for
+    // mouse users who cannot pull down to refresh.
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: Row(
+          children: [
+            Expanded(child: field),
+            IconButton(
+              onPressed: _refreshCurrent,
+              icon: const Icon(Icons.refresh),
+              tooltip: '刷新（F5）',
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
+      ),
+    );
+  }
 
   void _switchBottom(int tab) {
     if (_tab == tab) {
@@ -663,28 +684,48 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  void _openSettings() => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => DesktopFrame(
+        child: Scaffold(
+          appBar: AppBar(title: const Text('设置')),
+          body: const SettingsContent(),
+        ),
+      ),
+    ),
+  );
+
+  AppBar _profileBar() => AppBar(
+    toolbarHeight: 48,
+    title: const Text('个人页'),
+    actions: [
+      IconButton(
+        tooltip: '设置',
+        icon: const Icon(Icons.settings_outlined),
+        onPressed: _openSettings,
+      ),
+    ],
+  );
+
+  /// Refreshes the visible feed: re-tapping 首页 does the same.
+  void _refreshCurrent() {
+    if (_tab == 0) {
+      _switchBottom(0);
+    } else if (_tab == 1 && !_busy) {
+      _load(reset: true);
+    }
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: _tab == 2
-        ? AppBar(
-            toolbarHeight: 48,
-            title: const Text('个人页'),
-            actions: [
-              IconButton(
-                tooltip: '设置',
-                icon: const Icon(Icons.settings_outlined),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => Scaffold(
-                      appBar: AppBar(title: const Text('设置')),
-                      body: const SettingsContent(),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          )
-        : null,
+  Widget build(BuildContext context) => DesktopRefreshShortcut(
+    onRefresh: _refreshCurrent,
+    child: _buildPage(context),
+  );
+
+  Widget _buildPage(BuildContext context) => Scaffold(
+    // On desktop the profile title sits in the content column, beside the
+    // navigation rail rather than above it.
+    appBar: _tab == 2 && !isDesktop ? _profileBar() : null,
     body: Row(
       children: [
         if (useTabletLandscape(context))
@@ -720,7 +761,16 @@ class _HomePageState extends State<HomePage>
           ),
         Expanded(
           child: _tab == 2
-              ? const ProfilePage()
+              ? isDesktop
+                    ? DesktopFrame(
+                        child: Column(
+                          children: [
+                            _profileBar(),
+                            const Expanded(child: ProfilePage()),
+                          ],
+                        ),
+                      )
+                    : const ProfilePage()
               : SafeArea(
                   bottom: useTabletLandscape(context),
                   child: Column(

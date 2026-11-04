@@ -5,6 +5,7 @@ import '../data/tieba_api.dart';
 import '../widgets/post_widgets.dart';
 import '../widgets/thread_thumbnails.dart';
 import 'reading_page.dart';
+import '../widgets/desktop_layout.dart';
 
 enum MyContent { threads, replies, saved }
 
@@ -122,7 +123,14 @@ class _MyContentPageState extends State<MyContentPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => DesktopFrame(
+    child: DesktopRefreshShortcut(
+      onRefresh: () => _load(reset: true),
+      child: _buildPage(context),
+    ),
+  );
+
+  Widget _buildPage(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text(_title)),
     body: RefreshIndicator(
       onRefresh: () => _load(reset: true),

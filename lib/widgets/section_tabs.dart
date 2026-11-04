@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'desktop_layout.dart';
+
 class SectionTabs extends StatelessWidget {
   const SectionTabs({
     super.key,
@@ -10,6 +12,9 @@ class SectionTabs extends StatelessWidget {
   final List<String> labels;
   final int selected;
   final ValueChanged<int> onSelected;
+
+  static Widget _slot(Widget child) =>
+      isDesktop ? SizedBox(width: 120, child: child) : Expanded(child: child);
 
   @override
   Widget build(BuildContext context) {
@@ -25,10 +30,13 @@ class SectionTabs extends StatelessWidget {
           ),
         ),
         child: Row(
+          // Desktop: keep the tabs together in the middle instead of
+          // spreading them across the whole window.
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             for (var i = 0; i < labels.length; i++)
-              Expanded(
-                child: Semantics(
+              _slot(
+                Semantics(
                   selected: selected == i,
                   button: true,
                   child: InkWell(
@@ -76,5 +84,3 @@ class SectionTabs extends StatelessWidget {
     );
   }
 }
-
-
