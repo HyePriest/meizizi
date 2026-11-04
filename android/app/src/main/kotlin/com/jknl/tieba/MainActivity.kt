@@ -12,9 +12,13 @@ import android.app.Activity
 
 open class MainActivity : FlutterActivity() {
     private var voice: VoicePlayback? = null
-    override fun onResume() {
-        super.onResume()
-        WeeklyLauncherIcons.refresh(this)
+    override fun onStart() {
+        super.onStart()
+        WeeklyLauncherIcons.onActivityStarted(this)
+    }
+    override fun onStop() {
+        WeeklyLauncherIcons.onActivityStopped(this)
+        super.onStop()
     }
     override fun onPause() { voice?.stop(); super.onPause() }
     override fun onDestroy() { voice?.stop(); super.onDestroy() }

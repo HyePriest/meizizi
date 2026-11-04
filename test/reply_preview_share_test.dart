@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tieba/data/local_store.dart';
+import 'package:tieba/data/platform_session.dart';
 import 'package:tieba/data/post_protocol.dart';
 import 'package:tieba/data/share_content.dart';
 import 'package:tieba/data/tieba_api.dart';
@@ -117,7 +118,7 @@ void main() {
     expect(share.text, '主题\n汪峰在吧\n作者：正文[图片]\n${share.url}');
     MethodCall? call;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(ShareContent.channel, (value) async {
+        .setMockMethodCallHandler(PlatformSession.androidChannel, (value) async {
           call = value;
           return null;
         });
@@ -127,7 +128,7 @@ void main() {
     expect(call?.arguments['url'], share.url);
     expect(call?.arguments['bytes'], isNotEmpty);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(ShareContent.channel, null);
+        .setMockMethodCallHandler(PlatformSession.androidChannel, null);
   });
   testWidgets(
     'preview box opens once and count only appears for more replies',
