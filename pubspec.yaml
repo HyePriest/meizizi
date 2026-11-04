@@ -1,7 +1,7 @@
 name: tieba
 description: "精简的第三方贴吧 Android 客户端"
 publish_to: 'none'
-version: 1.2.0+60
+version: 1.2.1+61
 
 environment:
   sdk: ^3.13.5
