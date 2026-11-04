@@ -1,19 +1,25 @@
+import '../widgets/adaptive_feed.dart';
 import '../widgets/app_snack_bar.dart';
 
 import 'package:flutter/material.dart';
 
 import '../data/auth_store.dart';
 import '../data/local_store.dart';
-import '../data/tieba_api.dart';
+import '../data/models.dart';
+import '../features/home/home_controller.dart';
+import '../data/share_content.dart';
 import '../widgets/forum_widgets.dart';
+import '../widgets/home_thread_card.dart';
 import '../widgets/post_widgets.dart';
-import '../widgets/thread_thumbnails.dart';
-import 'user_page.dart';
+import '../widgets/shatter_effect.dart';
 import '../widgets/bulk_sign_dialog.dart';
 import 'reading_page.dart';
 import 'search_page.dart';
 import 'login_page.dart';
 import 'profile_page.dart';
+import 'hot_topics_page.dart';
+import '../widgets/liquid_feed_switcher.dart';
+import '../widgets/top_refresh_overlay.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -21,55 +27,55 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
-  final _api = TiebaApi();
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
+  final _feed = HomeController();
   final _search = TextEditingController();
-  final _scroll = ScrollController();
-  List<Json> _items = [];
-  Map<String, Json> _users = {};
-  int _tab = 0, _page = 0, _revision = 0;
-  bool _busy = false, _hasMore = true;
-  String? _error;
-  bool _retryReset = true;
-  final Map<
-    int,
-    ({
-      List<Json> items,
-      Map<String, Json> users,
-      int page,
-      bool more,
-      bool retryReset,
-      String? error,
-      double offset,
-    })
-  >
-  _savedTabs = {};
-
+  final _searchFocus = FocusNode();
+  final _shatterKeys = <String, GlobalKey>{};
+  final _blocking = <String>{};
+  var _scroll = ScrollController(keepScrollOffset: false);
+  final _hotRefresh = ValueNotifier<int>(0);
+  late final _searchCollapse = AnimationController(
+    vsync: this,
+    lowerBound: 0,
+    upperBound: 48,
+    duration: const Duration(milliseconds: 240),
+  );
+  bool _switchingFeed = false;
+  bool get _tapRefreshing => _feed.state.bottomRefresh;
+  double _headerDestination = 0;
+  final _feedHeaderOffsets = [0.0, 0.0];
+  double _headerDragDistance = 0;
+  int get _tab => _feed.tab;
+  List<Json> get _items => _feed.state.items;
+  Map<String, Json> get _users => _feed.state.users;
+  bool get _busy => _feed.state.busy;
+  bool get _hasMore => _feed.state.hasMore;
+  String? get _error => _feed.state.error;
+  bool _showHot = false, _hotVisited = false;
+  int _accountEpoch = 0;
+  final _scrollOffsets = <int, double>{};
   @override
   void initState() {
     super.initState();
-    AuthStore.instance.addListener(_authChanged);
+    _feed.addListener(_feedChanged);
     LocalStore.instance.addListener(_localChanged);
     _scroll.addListener(_loadNearEnd);
     _load(reset: true);
   }
 
-  void _authChanged() {
-    _savedTabs.clear();
-    setState(() {
-      _items = [];
-      _users = {};
-      _page = 0;
-    });
-    if (_tab != 2) {
-      _load(reset: true);
-    } else {
-      setState(() {
-        _items = [];
-        _users = {};
-        _page = 0;
-      });
+  void _feedChanged() {
+    if (!mounted) return;
+    if (_accountEpoch != _feed.accountEpoch) {
+      _accountEpoch = _feed.accountEpoch;
+      _scrollOffsets.clear();
+      _replaceScroll(0);
     }
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loadNearEnd();
+    });
   }
 
   void _localChanged() {
@@ -82,9 +88,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _loadNearEnd() {
-    if (_scroll.hasClients &&
+    if (!(_tab == 0 && _showHot) &&
+        _scroll.hasClients &&
         _scroll.position.extentAfter < 600 &&
         !_busy &&
+        !_tapRefreshing &&
         _hasMore &&
         _error == null &&
         _tab != 2) {
@@ -94,107 +102,89 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
-    AuthStore.instance.removeListener(_authChanged);
+    _feed.removeListener(_feedChanged);
     LocalStore.instance.removeListener(_localChanged);
-    _api.close();
+    _feed.dispose();
     _search.dispose();
+    _searchFocus.dispose();
     _scroll.dispose();
+    _hotRefresh.dispose();
+    _searchCollapse.dispose();
     super.dispose();
   }
 
-  Future<void> _load({bool reset = false}) async {
-    if (_tab == 2 || (_busy && !reset)) return;
-    final revision = ++_revision, tab = _tab, next = reset ? 1 : _page + 1;
-    _retryReset = reset;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
+  Future<void> _load({bool reset = false}) => _feed.load(reset: reset);
+
+  Future<void> _refreshFromBottom() async {
+    if (_tapRefreshing) return;
+    final request = _feed.load(reset: true, fromBottom: true);
+    final revision = _feed.revision;
     try {
-      List<Json> incoming;
-      Map<String, Json> users = {};
-      bool hasMore;
-      if (tab == 1) {
-        if (!AuthStore.instance.isLoggedIn) {
-          if (mounted && revision == _revision) {
-            setState(() {
-              _busy = false;
-              _hasMore = false;
-            });
-          }
-          return;
-        }
-        final result = await _api.followedForums(next);
-        incoming = result.items;
-        hasMore = result.hasMore;
-      } else {
-        final result = await _api.home(next);
-        incoming = result.threads
-            .where((t) => !t.containsKey('lego_card'))
-            .toList();
-        users = result.users;
-        hasMore = result.data.containsKey('has_more')
-            ? flag(result.data['has_more'])
-            : result.data.containsKey('page')
-            ? result.hasMore
-            : result.threads.isNotEmpty;
-      }
-      if (!mounted || revision != _revision) return;
-      setState(() {
-        if (reset) {
-          _items = [];
-          _users = {};
-        }
-        final ids = _items
-            .map((p) => tab == 1 ? forumName(p) : '${p['id']}')
-            .toSet();
-        _items.addAll(
-          incoming.where(
-            (p) => ids.add(tab == 1 ? forumName(p) : '${p['id']}'),
-          ),
-        );
-        _users.addAll(users);
-        _page = next;
-        _hasMore = hasMore;
-      });
-    } catch (e) {
-      if (mounted && revision == _revision) {
-        setState(
-          () => _error = e is TiebaException ? e.message : '加载失败，请检查网络后重试',
+      if (_scroll.hasClients) {
+        await _scroll.animateTo(
+          0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
         );
       }
+      if (mounted) _feed.reveal(revision);
+      await request;
     } finally {
-      if (mounted && revision == _revision) {
-        setState(() => _busy = false);
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _loadNearEnd();
-        });
-      }
+      if (mounted) _feed.reveal(revision);
     }
+  }
+
+  bool _trackRefreshGesture(ScrollNotification notification) {
+    if (notification.depth == 0 &&
+        notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      _feed.cancelBottomRefresh();
+    }
+    return false;
+  }
+
+  void _replaceScroll(double offset) {
+    final previous = _scroll;
+    previous.removeListener(_loadNearEnd);
+    _scroll = ScrollController(
+      initialScrollOffset: offset,
+      keepScrollOffset: false,
+    )..addListener(_loadNearEnd);
+    WidgetsBinding.instance.addPostFrameCallback((_) => previous.dispose());
   }
 
   void _open(String name) {
     if (name.trim().isEmpty) return;
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => ReadingPage(forum: name)));
+    _navigateFromHome(ReadingPage(forum: name));
   }
 
-  void _openPost(Json item) => Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => ReadingPage(
-        threadId: '${item['id']}',
-        title: '${item['title'] ?? ''}',
-        forum: threadForumName(item).isEmpty ? null : threadForumName(item),
-      ),
+  Future<void> _navigateFromHome(Widget page) async {
+    FocusScope.of(context).unfocus();
+    _searchFocus.canRequestFocus = false;
+    _feed.cancelBottomRefresh();
+    try {
+      await Navigator.of(context)
+          .push(MaterialPageRoute<void>(builder: (_) => page));
+    } finally {
+      if (mounted) {
+        _searchFocus.unfocus();
+        _searchFocus.canRequestFocus = true;
+      }
+    }
+  }
+
+  void _openPost(Json item) => _navigateFromHome(
+    ReadingPage(
+      previewThread: {...item, 'author': _user(item)},
+      threadId: '${item['id']}',
+      title: '${item['title'] ?? ''}',
+      forum: threadForumName(item).isEmpty ? null : threadForumName(item),
     ),
   );
   void _searchFor(String raw) {
     final word = raw.trim();
     if (word.isEmpty) return;
-    FocusScope.of(context).unfocus();
-    Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => SearchPage(word: word)));
+    _navigateFromHome(SearchPage(word: word));
   }
 
   Future<void> _bulkSign() async {
@@ -216,20 +206,44 @@ class _HomePageState extends State<HomePage> {
   Json _user(Json item) =>
       _users['${item['author_id']}'] ?? object(item['author']);
   Future<void> _block(String choice, Json item, Json user) async {
+    final id = '${item['id']}';
+    if (!_blocking.add(id)) return;
     try {
-      if (choice == 'forum') {
-        await LocalStore.instance.blockForum(threadForumName(item));
-      } else {
-        await LocalStore.instance.blockUser(userKey(user, item), author(user));
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showAppSnackBar(const AppSnackBar(content: Text('已屏蔽，可在“我”中管理')));
-      }
+      await shatterRemove(_shatterKeys[id], () async {
+        if (choice == 'forum') {
+          await LocalStore.instance.blockForum(threadForumName(item));
+        } else {
+          await LocalStore.instance.blockUser(
+            userKey(user, item),
+            author(user),
+          );
+        }
+      });
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showAppSnackBar(const AppSnackBar(content: Text('屏蔽保存失败，请重试')));
+      }
+    } finally {
+      _blocking.remove(id);
+    }
+  }
+
+  Future<void> _sharePost(Json item) async {
+    try {
+      await ShareContent.post(
+        threadId: '${item['id']}',
+        title: firstText([item['title']]),
+        forum: threadForumName(item),
+        post: {
+          ...item,
+          'author': {..._user(item), ...object(item['author'])},
+        },
+      ).share();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showAppSnackBar(const AppSnackBar(content: Text('无法打开分享，请稍后重试')));
       }
     }
   }
@@ -254,159 +268,102 @@ class _HomePageState extends State<HomePage> {
       );
     }
     final user = _user(item), forum = threadForumName(item);
-    final summary = objects(item['abstract'])
-        .map((p) => p['text'] ?? '')
-        .join();
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InkWell(
-              onTap: forum.isEmpty ? null : () => _open(forum),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ForumAvatar(
-                    forum: {
-                      ...object(item['forum']),
-                      ...object(item['forum_info']),
-                      'name': forum,
-                      'avatar': firstText([
-                        object(item['forum_info'])['avatar'],
-                        object(item['forum'])['avatar'],
-                        item['forum_avatar'],
-                      ]),
-                    },
-                    size: 42,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          forum.isEmpty ? '所属吧信息暂不可用' : '$forum吧',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        Text(
-                          threadTimeLabel(item),
-                          style: Theme.of(context).textTheme.labelSmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Flexible(
-                    child: Align(
-                      alignment: Alignment.topRight,
-                      child: TextButton.icon(
-                        style: TextButton.styleFrom(
-                          alignment: Alignment.topRight,
-                          padding: const EdgeInsets.fromLTRB(8, 2, 0, 0),
-                          minimumSize: const Size(0, 42),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        onPressed: () => openUser(context, user),
-                        icon: UserAvatar(user: user, size: 20),
-                        label: Text(
-                          author(user),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            InkWell(
-              onTap: () => _openPost(item),
-              child: SizedBox(
-                width: double.infinity,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        firstText([item['title']], '查看帖子'),
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      if (summary.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            summary,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ThreadThumbnails(thread: item),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Row(
-              children: [
-                TextButton.icon(
-                  onPressed: () => _openPost(item),
-                  icon: const Icon(Icons.chat_bubble_outline, size: 16),
-                  label: Text('${item['reply_num'] ?? 0} 条回复'),
-                ),
-                const Spacer(),
-                PopupMenuButton<String>(
-                  tooltip: '屏蔽内容',
-                  icon: const Icon(Icons.close, size: 20),
-                  onSelected: (choice) => _block(choice, item, user),
-                  itemBuilder: (_) => [
-                    PopupMenuItem(
-                      value: 'forum',
-                      enabled: forum.isNotEmpty,
-                      child: Text(forum.isEmpty ? '无法取得所属吧' : '屏蔽 $forum吧'),
-                    ),
-                    PopupMenuItem(
-                      value: 'user',
-                      enabled: userKey(user, item).isNotEmpty,
-                      child: Text('屏蔽 ${author(user)}'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
+    return RepaintBoundary(
+      key: _shatterKeys.putIfAbsent('${item['id']}', () => GlobalKey()),
+      child: HomeThreadCard(
+        thread: item,
+        user: user,
+        onOpenForum: () => _open(forum),
+        onOpen: () => _openPost(item),
+        onShare: () => _sharePost(item),
+        onBlock: (choice) => _block(choice, item, user),
+        onLikeChanged: _feed.updateLike,
       ),
     );
   }
 
-  Widget _resumeCard() {
-    final history = LocalStore.instance.history;
-    if (history.isEmpty) return const SizedBox.shrink();
-    final item = history.first;
-    final tid = firstText([item['id']]);
-    if (tid.isEmpty) return const SizedBox.shrink();
-    final floor = number(LocalStore.instance.readingPosition(tid)['floor']);
+  Widget _recentCard() {
+    final store = LocalStore.instance;
+    if (store.history.isEmpty && store.recent.isEmpty)
+      return const SizedBox.shrink();
+    final item = store.history.isEmpty ? null : store.history.first;
+    final tid = item == null ? '' : firstText([item['id']]);
+    final floor = tid.isEmpty ? 0 : number(store.readingPosition(tid)['floor']);
     return Card(
-      child: ListTile(
-        leading: const Icon(Icons.history),
-        title: const Text('继续阅读'),
-        subtitle: Text(
-          '${firstText([item['title']], '上次的帖子')}${floor > 1 ? ' · 第 $floor 楼' : ''}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => ReadingPage(
-              threadId: tid,
-              title: firstText([item['title']]),
-              forum: firstText([item['forum']]),
-            ),
-          ),
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('最近浏览', style: Theme.of(context).textTheme.titleSmall),
+            if (item != null && tid.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ReadingPage(
+                      threadId: tid,
+                      title: firstText([item['title']]),
+                      forum: firstText([item['forum']]),
+                    ),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.history,
+                        size: 20,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              firstText([item['title']], '上次的帖子'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '继续阅读${floor > 1 ? ' · 第 $floor 楼' : ''}',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right, size: 18),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            if (store.recent.isNotEmpty) ...[
+              if (tid.isNotEmpty) const Divider(height: 16),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final name in store.recent)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ActionChip(
+                          label: Text('$name吧'),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => _open(name),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -418,158 +375,296 @@ class _HomePageState extends State<HomePage> {
               .where((item) => !LocalStore.instance.hidden(item, _user(item)))
               .toList()
         : _items;
-    return RefreshIndicator(
-      onRefresh: () => _load(reset: true),
-      child: ListView.builder(
-        controller: _scroll,
-        key: ValueKey(_tab),
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(12),
-        itemCount: visible.length + 2,
-        itemBuilder: (context, index) {
-          if (index > 0 && index <= visible.length)
-            return _entry(visible[index - 1]);
-          if (index == 0)
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _resumeCard(),
-                if (_tab == 1) ...[
-                  if (LocalStore.instance.recent.isNotEmpty) ...[
-                    Text(
-                      '最近浏览',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        for (final name in LocalStore.instance.recent)
-                          ActionChip(
-                            label: Text('$name吧'),
-                            onPressed: () => _open(name),
+    return NotificationListener<ScrollNotification>(
+      onNotification: _trackRefreshGesture,
+      child: TopRefreshOverlay(
+        refreshing: _tapRefreshing,
+        child: RefreshIndicator(
+          onRefresh: () => _load(reset: true),
+          child: AdaptiveFeedView.builder(
+            controller: _scroll,
+            key: ValueKey(_tab),
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(12),
+            fullWidthFirst: true,
+            fullWidthLast: true,
+            itemCount: visible.length + 2,
+            itemBuilder: (context, index) {
+              if (index > 0 && index <= visible.length)
+                return _entry(visible[index - 1]);
+              if (index == 0)
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_tab == 1) ...[
+                      _recentCard(),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '我关注的吧',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
                           ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '我关注的吧',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
+                          ListenableBuilder(
+                            listenable: BulkSignTask.instance,
+                            builder: (context, _) {
+                              final task = BulkSignTask.instance;
+                              return FilledButton.tonalIcon(
+                                onPressed: task.running ? null : _bulkSign,
+                                icon: Icon(
+                                  task.allSigned
+                                      ? Icons.check
+                                      : Icons.event_available,
+                                ),
+                                label: Text(task.buttonLabel),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                       ListenableBuilder(
                         listenable: BulkSignTask.instance,
                         builder: (context, _) {
                           final task = BulkSignTask.instance;
-                          return FilledButton.tonalIcon(
-                            onPressed: task.running ? null : _bulkSign,
-                            icon: Icon(
-                              task.allSigned
-                                  ? Icons.check
-                                  : Icons.event_available,
+                          if (!task.finished) return const SizedBox.shrink();
+                          return Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: () => showModalBottomSheet<void>(
+                                context: context,
+                                isScrollControlled: true,
+                                builder: (_) => SafeArea(
+                                  child: SizedBox(
+                                    height:
+                                        MediaQuery.sizeOf(context).height * .65,
+                                    child: ListView(
+                                      padding: const EdgeInsets.all(16),
+                                      children: [
+                                        Text(task.summary),
+                                        const Divider(),
+                                        for (final result in task.results)
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 6,
+                                            ),
+                                            child: Text(result),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              child: Text(
+                                '已签 ${task.success} 个${task.unavailable > 0 ? ' · 跳过 ${task.unavailable} 个' : ''} · 查看结果',
+                              ),
                             ),
-                            label: Text(task.buttonLabel),
                           );
                         },
                       ),
-                    ],
-                  ),
-                  ListenableBuilder(
-                    listenable: BulkSignTask.instance,
-                    builder: (context, _) {
-                      final task = BulkSignTask.instance;
-                      if (!task.finished) return const SizedBox.shrink();
-                      return Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: () => showModalBottomSheet<void>(
-                            context: context,
-                            isScrollControlled: true,
-                            builder: (_) => SafeArea(
-                              child: SizedBox(
-                                height: MediaQuery.sizeOf(context).height * .65,
-                                child: ListView(
-                                  padding: const EdgeInsets.all(16),
-                                  children: [
-                                    Text(task.summary),
-                                    const Divider(),
-                                    for (final result in task.results)
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 6,
-                                        ),
-                                        child: Text(result),
+                      const SizedBox(height: 12),
+                      if (!AuthStore.instance.isLoggedIn)
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            children: [
+                              const Text('登录后查看已关注的吧并签到'),
+                              TextButton(
+                                onPressed: () => Navigator.of(context)
+                                    .push<bool>(
+                                      MaterialPageRoute(
+                                        builder: (_) => const LoginPage(),
                                       ),
-                                  ],
-                                ),
+                                    ),
+                                child: const Text('登录'),
                               ),
-                            ),
-                          ),
-                          child: Text(
-                            '已签 ${task.success} 个${task.unavailable > 0 ? ' · 跳过 ${task.unavailable} 个' : ''} · 查看结果',
+                            ],
                           ),
                         ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  if (!AuthStore.instance.isLoggedIn)
+                    ],
+                  ],
+                );
+              return Column(
+                children: [
+                  if (_error != null)
                     Padding(
                       padding: const EdgeInsets.all(24),
                       child: Column(
                         children: [
-                          const Text('登录后查看已关注的吧并签到'),
+                          Text(_error!, textAlign: TextAlign.center),
                           TextButton(
-                            onPressed: () => Navigator.of(context).push<bool>(
-                              MaterialPageRoute(
-                                builder: (_) => const LoginPage(),
-                              ),
-                            ),
-                            child: const Text('登录'),
+                            onPressed: () =>
+                                _load(reset: _feed.state.retryReset),
+                            child: const Text('重试'),
                           ),
                         ],
                       ),
                     ),
-                ],
-              ],
-            );
-          return Column(
-            children: [
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    children: [
-                      Text(_error!, textAlign: TextAlign.center),
-                      TextButton(
-                        onPressed: () => _load(reset: _retryReset),
-                        child: const Text('重试'),
+                  if (_busy && !_tapRefreshing)
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_hasMore && _error == null)
+                    TextButton(onPressed: _load, child: const Text('加载下一页'))
+                  else if (visible.isEmpty &&
+                      _error == null &&
+                      (_tab == 0 || AuthStore.instance.isLoggedIn))
+                    Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Center(
+                        child: Text(_items.isNotEmpty ? '本页内容已被屏蔽' : '暂时没有内容'),
                       ),
-                    ],
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _chooseFeed(bool hot) {
+    if (_showHot == hot) return;
+    _feed.cancelBottomRefresh();
+    FocusScope.of(context).unfocus();
+    _headerDragDistance = 0;
+    // Keep the shared search header still while switching feeds.
+    _feedHeaderOffsets[hot ? 1 : 0] = _searchCollapse.value;
+    setState(() {
+      _showHot = hot;
+      if (hot) _hotVisited = true;
+    });
+  }
+
+  bool _trackHeader(ScrollNotification notification) {
+    if (_switchingFeed) return false;
+    if (_tab == 0 &&
+        notification.depth == 0 &&
+        notification.metrics.axis == Axis.vertical &&
+        notification is ScrollUpdateNotification) {
+      // Follow the user's direction, rather than requiring a return to the top.
+      // Ignore ballistic/layout updates so the header cannot drive itself.
+      if (notification.dragDetails == null) return false;
+      final delta = notification.scrollDelta ?? 0;
+      if (delta == 0) return false;
+      if (_headerDragDistance.sign != delta.sign) _headerDragDistance = 0;
+      _headerDragDistance += delta;
+      if (_headerDragDistance.abs() >= 12 || notification.metrics.pixels <= 0) {
+        final hidden = notification.metrics.pixels <= 0 || delta < 0
+            ? 0.0
+            : 48.0;
+        _feedHeaderOffsets[_showHot ? 1 : 0] = hidden;
+        if (_headerDestination != hidden) {
+          _headerDestination = hidden;
+          _searchCollapse.animateTo(hidden, curve: Curves.easeOutCubic);
+        }
+      }
+    }
+    return false;
+  }
+
+  Widget _searchBox() => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 5, 12, 5),
+    child: SizedBox(
+      height: 38,
+      child: TextField(
+        controller: _search,
+        focusNode: _searchFocus,
+        onTapOutside: (_) => _searchFocus.unfocus(),
+        textInputAction: TextInputAction.search,
+        onSubmitted: _searchFor,
+        style: const TextStyle(fontSize: 14),
+        decoration: InputDecoration(
+          prefixIcon: const Icon(Icons.search, size: 20),
+          filled: true,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 8,
+          ),
+          border: OutlineInputBorder(
+            borderSide: BorderSide.none,
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  void _switchBottom(int tab) {
+    if (_tab == tab) {
+      if (tab == 0 && !_switchingFeed) {
+        _headerDestination = 0;
+        _searchCollapse.animateTo(0, curve: Curves.easeOutCubic);
+        _feedHeaderOffsets.fillRange(0, _feedHeaderOffsets.length, 0);
+        _headerDragDistance = 0;
+        if (_showHot) {
+          _hotRefresh.value++;
+        } else {
+          _refreshFromBottom();
+        }
+      }
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    if (_tab != 2) {
+      _scrollOffsets[_tab] = _scroll.hasClients ? _scroll.offset : 0;
+    }
+    _replaceScroll(_scrollOffsets[tab] ?? 0);
+    _feed.selectTab(tab);
+    _searchCollapse.stop();
+    if (tab == 0) {
+      _headerDestination = _feedHeaderOffsets[_showHot ? 1 : 0];
+      _searchCollapse.value = _headerDestination;
+    }
+  }
+
+  Widget _navigationItem(
+    int tab,
+    IconData icon,
+    IconData selectedIcon,
+    String label,
+  ) {
+    final selected = _tab == tab;
+    final colors = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Semantics(
+        label: label,
+        button: true,
+        selected: selected,
+        child: Tooltip(
+          message: label,
+          child: InkResponse(
+            onTap: () => _switchBottom(tab),
+            radius: 23,
+            splashColor: colors.primary.withValues(alpha: .24),
+            highlightColor: colors.primary.withValues(alpha: .10),
+            child: SizedBox.expand(
+              child: Center(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? colors.primaryContainer
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(
+                    selected ? selectedIcon : icon,
+                    size: 22,
+                    color: selected ? colors.primary : colors.onSurfaceVariant,
                   ),
                 ),
-              if (_busy)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (_hasMore && _error == null)
-                TextButton(onPressed: _load, child: const Text('加载下一页'))
-              else if (visible.isEmpty &&
-                  _error == null &&
-                  (_tab == 0 || AuthStore.instance.isLoggedIn))
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Center(
-                    child: Text(_items.isNotEmpty ? '本页内容已被屏蔽' : '暂时没有内容'),
-                  ),
-                ),
-            ],
-          );
-        },
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -578,7 +673,8 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) => Scaffold(
     appBar: _tab == 2
         ? AppBar(
-            title: const Text('我的'),
+            toolbarHeight: 48,
+            title: const Text('个人页'),
             actions: [
               IconButton(
                 tooltip: '设置',
@@ -594,85 +690,130 @@ class _HomePageState extends State<HomePage> {
               ),
             ],
           )
-        : AppBar(
-            titleSpacing: 12,
-            title: TextField(
-              controller: _search,
-              textInputAction: TextInputAction.search,
-              onSubmitted: _searchFor,
-              decoration: InputDecoration(
-                hintText: '搜索吧或帖子',
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                contentPadding: EdgeInsets.zero,
-                suffixIcon: IconButton(
-                  onPressed: () => _searchFor(_search.text),
-                  icon: const Icon(Icons.arrow_forward),
+        : null,
+    body: Row(
+      children: [
+        if (useTabletLandscape(context))
+          Material(
+            color: Theme.of(context).colorScheme.surface,
+            child: SafeArea(
+              right: false,
+              child: NavigationRail(
+                selectedIndex: _tab,
+                onDestinationSelected: _switchBottom,
+                labelType: NavigationRailLabelType.all,
+                minWidth: 88,
+                groupAlignment: -1,
+                destinations: const [
+                  NavigationRailDestination(
+                    icon: Icon(Icons.home_outlined),
+                    selectedIcon: Icon(Icons.home),
+                    label: Text('首页'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.forum_outlined),
+                    selectedIcon: Icon(Icons.forum),
+                    label: Text('关注的吧'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.person_outline),
+                    selectedIcon: Icon(Icons.person),
+                    label: Text('个人页'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        Expanded(
+          child: _tab == 2
+              ? const ProfilePage()
+              : SafeArea(
+                  bottom: useTabletLandscape(context),
+                  child: Column(
+                    children: [
+                      if (_tab != 0) _searchBox(),
+                      Expanded(
+                        child: _tab == 0
+                            ? NotificationListener<ScrollNotification>(
+                                onNotification: _trackHeader,
+                                child: LiquidFeedSwitcher(
+                                  header: AnimatedBuilder(
+                                    animation: _searchCollapse,
+                                    child: _searchBox(),
+                                    builder: (_, child) => ClipRect(
+                                      child: SizedBox(
+                                        height: 48 - _searchCollapse.value,
+                                        child: OverflowBox(
+                                          alignment: Alignment.bottomCenter,
+                                          minHeight: 48,
+                                          maxHeight: 48,
+                                          child: child,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  onSwitching: (active) {
+                                    _switchingFeed = active;
+                                    _headerDragDistance = 0;
+                                    if (active) {
+                                      _feed.cancelBottomRefresh();
+                                      _searchCollapse.stop();
+                                      _headerDestination =
+                                          _searchCollapse.value;
+                                    }
+                                  },
+                                  selected: _showHot ? 1 : 0,
+                                  onSelected: (index) =>
+                                      _chooseFeed(index == 1),
+                                  onPrepare: (index) {
+                                    if (index == 1 && !_hotVisited) {
+                                      setState(() => _hotVisited = true);
+                                    }
+                                  },
+                                  children: [
+                                    _content(),
+                                    if (_hotVisited)
+                                      HotTopicsView(refreshSignal: _hotRefresh)
+                                    else
+                                      const SizedBox.shrink(),
+                                  ],
+                                ),
+                              )
+                            : _content(),
+                      ),
+                    ],
+                  ),
                 ),
-                border: OutlineInputBorder(
-                  borderSide: BorderSide.none,
-                  borderRadius: BorderRadius.circular(24),
+        ),
+      ],
+    ),
+    bottomNavigationBar: useTabletLandscape(context)
+        ? null
+        : Material(
+            color: Theme.of(context).colorScheme.surface,
+            child: SafeArea(
+              top: false,
+              child: SizedBox(
+                height: 46,
+                child: Row(
+                  children: [
+                    _navigationItem(0, Icons.home_outlined, Icons.home, '首页'),
+                    _navigationItem(
+                      1,
+                      Icons.forum_outlined,
+                      Icons.forum,
+                      '关注的吧',
+                    ),
+                    _navigationItem(
+                      2,
+                      Icons.person_outline,
+                      Icons.person,
+                      '个人页',
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
-    body: _tab == 2 ? const ProfilePage() : _content(),
-    bottomNavigationBar: NavigationBar(
-      selectedIndex: _tab,
-      onDestinationSelected: (tab) {
-        if (_tab == tab) return;
-        FocusScope.of(context).unfocus();
-        if (_tab != 2) {
-          _savedTabs[_tab] = (
-            items: List.of(_items),
-            users: Map.of(_users),
-            page: _page,
-            more: _hasMore,
-            retryReset: _retryReset,
-            error: _error,
-            offset: _scroll.hasClients ? _scroll.offset : 0,
-          );
-        }
-        final saved = _savedTabs[tab];
-        setState(() {
-          _tab = tab;
-          _revision++;
-          _busy = false;
-          _items = saved?.items ?? [];
-          _users = saved?.users ?? {};
-          _page = saved?.page ?? 0;
-          _hasMore = saved?.more ?? true;
-          _error = saved?.error;
-          _retryReset = saved?.retryReset ?? true;
-        });
-        if (tab != 2) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && _scroll.hasClients) {
-              _scroll.jumpTo(
-                (saved?.offset ?? 0).clamp(0, _scroll.position.maxScrollExtent),
-              );
-            }
-          });
-          if (saved == null || saved.page == 0) _load(reset: true);
-        }
-      },
-      destinations: const [
-        NavigationDestination(
-          icon: Icon(Icons.home_outlined),
-          selectedIcon: Icon(Icons.home),
-          label: '首页',
-        ),
-        NavigationDestination(
-          icon: Icon(Icons.forum_outlined),
-          selectedIcon: Icon(Icons.forum),
-          label: '我的吧',
-        ),
-        NavigationDestination(
-          icon: Icon(Icons.person_outline),
-          selectedIcon: Icon(Icons.person),
-          label: '我的',
-        ),
-      ],
-    ),
   );
 }

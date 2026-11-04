@@ -51,6 +51,15 @@ android/key.properties
 *.keystore
 *.jks
 
-.publish/
-android/local.properties
+# Local release repository and private archives
+/.publish/
+
+/.maintenance/
+/releases/meizizi-windows-*.zip
+/releases/meizizi-windows-*-setup.exe
+/android/build/
+/android/.kotlin/
+*.apk
+*.aab
+.env*
 

@@ -1,3 +1,4 @@
+import '../data/platform_session.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -448,7 +449,7 @@ class _PrivateChatPageState extends State<_PrivateChatPage> {
                     ? null
                     : () async {
                         try {
-                          await const MethodChannel('com.jknl.tieba/session')
+                          await const PlatformSession()
                               .invokeMethod('openOfficialTieba');
                         } catch (_) {
                           if (context.mounted)

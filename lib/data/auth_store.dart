@@ -1,20 +1,31 @@
+import 'platform_session.dart';
 import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'app_webview.dart';
 
 import 'models.dart';
 
 class AuthStore extends ChangeNotifier {
   AuthStore._();
   static final instance = AuthStore._();
-  static const native = MethodChannel('com.jknl.tieba/session');
+  static const native = PlatformSession();
   static const _storage = FlutterSecureStorage();
   List<Json> _accounts = [];
   String _active = '';
+  Future<void> _pendingChange = Future<void>.value();
+
+  Future<void> _change(Future<void> Function() action) {
+    final result = _pendingChange.then((_) => action());
+    _pendingChange = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace __) {},
+    );
+    return result;
+  }
+
   List<Json> get accounts =>
       _accounts.map((a) => {'id': a['id'], 'user': object(a['user'])}).toList();
   String get activeId => _active;
@@ -23,18 +34,30 @@ class AuthStore extends ChangeNotifier {
   Json get user => object(_session['user']);
   Map<String, String> get _cookies =>
       object(_session['cookies']).map((k, v) => MapEntry(k, '$v'));
-  final String deviceId = List.generate(
+  String deviceId = List.generate(
     16,
     (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0'),
   ).join();
   bool get isLoggedIn => bduss.isNotEmpty;
-  String get bduss => _cookies['BDUSS'] ?? _cookies['BDUSS_BFESS'] ?? '';
-  String get stoken => _cookies['STOKEN'] ?? _cookies['STOKEN_BFESS'] ?? '';
+  bool get isGuest => !isLoggedIn;
+  String get bduss => firstText([_cookies['BDUSS'], _cookies['BDUSS_BFESS']]);
+  String get stoken =>
+      firstText([_cookies['STOKEN'], _cookies['STOKEN_BFESS']]);
   String get baiduid => _cookies['BAIDUID'] ?? '';
   String get cookieHeader =>
       _cookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
 
   Future<void> restore() async {
+    try {
+      final savedDevice = await _storage.read(key: 'anonymous_device_id');
+      if (savedDevice != null && savedDevice.isNotEmpty) {
+        deviceId = savedDevice;
+      } else {
+        await _storage.write(key: 'anonymous_device_id', value: deviceId);
+      }
+    } catch (_) {
+      // Browsing can still use this launch's random ID if storage is unavailable.
+    }
     try {
       final saved = await _storage.read(key: 'baidu_accounts');
       if (saved != null) {
@@ -88,21 +111,22 @@ class AuthStore extends ChangeNotifier {
     }
   }
 
-  Future<void> save(Map<String, String> cookies, Json profile) async {
-    final id = firstText([profile['id'], profile['user_id']]);
-    if (id.isEmpty) throw const TiebaException('无法取得账号标识，请重新登录');
-    final updated = [
-      ..._accounts.where((a) => a['id'] != id),
-      {'id': id, 'user': profile, 'cookies': cookies},
-    ];
-    await _persist(updated, id);
-    _accounts = updated;
-    _active = id;
-    await _storage.delete(key: 'baidu_session');
-    notifyListeners();
-  }
+  Future<void> save(Map<String, String> cookies, Json profile) =>
+      _change(() async {
+        final id = firstText([profile['id'], profile['user_id']]);
+        if (id.isEmpty) throw const TiebaException('无法取得账号标识，请重新登录');
+        final updated = [
+          ..._accounts.where((a) => a['id'] != id),
+          {'id': id, 'user': profile, 'cookies': cookies},
+        ];
+        await _persist(updated, id);
+        _accounts = updated;
+        _active = id;
+        await _storage.delete(key: 'baidu_session');
+        notifyListeners();
+      });
 
-  Future<void> switchAccount(String id) async {
+  Future<void> switchAccount(String id) => _change(() async {
     if (id == _active) return;
     final account = _accounts.firstWhere(
       (a) => a['id'] == id,
@@ -124,9 +148,9 @@ class AuthStore extends ChangeNotifier {
     await _persist(_accounts, id);
     _active = id;
     notifyListeners();
-  }
+  });
 
-  Future<void> removeAccount(String id) async {
+  Future<void> removeAccount(String id) => _change(() async {
     if (id == _active) await native.invokeMethod<void>('clearBaiduCookies');
     final updated = _accounts.where((a) => a['id'] != id).toList();
     final next = id == _active ? '' : _active;
@@ -134,7 +158,14 @@ class AuthStore extends ChangeNotifier {
     _accounts = updated;
     _active = next;
     notifyListeners();
-  }
+  });
+
+  Future<void> enterGuestMode() => _change(() async {
+    await native.invokeMethod<void>('clearBaiduCookies');
+    await _persist(_accounts, '');
+    _active = '';
+    notifyListeners();
+  });
 
   Future<void> logout() => removeAccount(_active);
 }

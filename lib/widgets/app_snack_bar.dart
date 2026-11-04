@@ -12,6 +12,36 @@ extension AppFeedback on ScaffoldMessengerState {
   ) {
     clearSnackBars();
     removeCurrentSnackBar();
-    return showSnackBar(message);
+    return showSnackBar(
+      SnackBar(
+        duration: message.duration,
+        persist: false,
+        action: message.action,
+        content: Builder(
+          builder: (context) {
+            final accent = Theme.of(context).colorScheme.primary;
+            return Row(
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.info_outline_rounded,
+                    color: accent,
+                    size: 19,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: message.content),
+              ],
+            );
+          },
+        ),
+      ),
+    );
   }
 }

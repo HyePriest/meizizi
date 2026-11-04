@@ -20,6 +20,13 @@ List<Json> objects(dynamic value) =>
     value is List ? value.map(object).toList() : [];
 int number(dynamic value) => int.tryParse('$value') ?? 0;
 bool flag(dynamic value) => value == true || number(value) == 1;
+String forumName(Json forum) => firstText([forum['name'], forum['forum_name']]);
+String forumCoverUrl(Json forum) => httpsImage(forum['header_image']);
+String forumDescription(Json forum) {
+  final description = plainText(forum['slogan']).trim();
+  return description.isEmpty ? '吧主很懒，没有留下任何简介' : description;
+}
+
 String firstText(Iterable<dynamic> values, [String fallback = '']) => values
     .map((v) => v == null ? '' : '$v')
     .firstWhere((v) => v.isNotEmpty, orElse: () => fallback);
@@ -58,8 +65,25 @@ String postIp(Json post, Json user) {
   ]).replaceFirst(RegExp(r'^IP(?:属地)?\s*[:：]?\s*', caseSensitive: false), '');
 }
 
-String plainText(dynamic value) =>
-    html.parseFragment('${value ?? ''}').text ?? '';
+final _plainTextCache = <String, String>{};
+
+String plainText(dynamic value) {
+  final source = '${value ?? ''}';
+  final cached = _plainTextCache.remove(source);
+  if (cached != null) {
+    _plainTextCache[source] = cached;
+    return cached;
+  }
+  final text = html.parseFragment(source).text ?? '';
+  // Keep small, frequently rebuilt labels; never retain whole long posts.
+  if (source.length <= 2048) {
+    _plainTextCache[source] = text;
+    if (_plainTextCache.length > 256) {
+      _plainTextCache.remove(_plainTextCache.keys.first);
+    }
+  }
+  return text;
+}
 
 String threadForumName(Json thread) => firstText([
   thread['forum_name'],
@@ -119,11 +143,18 @@ String commentTime(dynamic value, {DateTime? now}) {
   ).toLocal();
   final current = now ?? DateTime.now();
   final elapsed = current.difference(date);
+  final days = DateTime.utc(
+    current.year,
+    current.month,
+    current.day,
+  ).difference(DateTime.utc(date.year, date.month, date.day)).inDays;
   if (elapsed.isNegative || elapsed.inMinutes < 1) return '刚刚';
+  if (days == 1) return '昨天';
+  if (days == 2) return '前天';
   if (elapsed.inHours < 1) return '${elapsed.inMinutes}分钟前';
   if (elapsed.inHours < 24) return '${elapsed.inHours}小时前';
   String pad(int n) => '$n'.padLeft(2, '0');
-  return '${date.year == current.year ? '' : '${date.year}-'}${pad(date.month)}-${pad(date.day)} ${pad(date.hour)}:${pad(date.minute)}';
+  return '${date.year == current.year ? '' : '${date.year}-'}${pad(date.month)}-${pad(date.day)}';
 }
 
 String threadTimeLabel(Json thread, {bool latestReply = false}) {
@@ -286,7 +317,28 @@ Json threadVideo(Json thread) {
 }
 
 String httpsImage(dynamic value) {
-  final raw = '${value ?? ''}';
+  if (value is Map) {
+    for (final key in [
+      'url',
+      'src',
+      'origin_src',
+      'original',
+      'big',
+      'small',
+    ]) {
+      final url = httpsImage(value[key]);
+      if (url.isNotEmpty) return url;
+    }
+    return '';
+  }
+  var raw = '${value ?? ''}'.trim().replaceAll('&amp;', '&');
+  if (raw.toLowerCase().startsWith('http%')) {
+    try {
+      raw = Uri.decodeFull(raw);
+    } catch (_) {
+      return '';
+    }
+  }
   final uri = Uri.tryParse(raw.startsWith('//') ? 'https:$raw' : raw);
   if (uri == null ||
       !['http', 'https'].contains(uri.scheme) ||
@@ -324,6 +376,17 @@ bool unavailableForumMessage(String message) =>
     RegExp(r'封禁|被封|封了|不存在|已关闭|已删除|暂停开放|暂不开放|停止服务|无法访问|已屏蔽').hasMatch(message) &&
     !RegExp(r'账号|帐号|用户被|您被|你被').hasMatch(message);
 
+/// Only inspect the card itself: an ordinary post's author may be live too.
+bool isLiveThread(Json thread) =>
+    flag(thread['is_livepost']) ||
+    flag(thread['is_live']) ||
+    number(thread['live_id']) > 0 ||
+    ['ala_info', 'live_info', 'livecard_info'].any((key) {
+      final value = thread[key];
+      return value is Map && value.isNotEmpty ||
+          value is List && value.isNotEmpty;
+    });
+
 class TiebaPage {
   TiebaPage(this.data);
   final Json data;
@@ -338,6 +401,7 @@ class TiebaPage {
         (t) =>
             !flag(t['is_tiebaplus_ad']) &&
             !flag(t['is_ad']) &&
+            !isLiveThread(t) &&
             '${t['id'] ?? ''}'.isNotEmpty,
       )
       .toList();

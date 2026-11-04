@@ -43,8 +43,8 @@ void main() {
         expect(find.byType(Container), findsNothing);
         continue;
       }
-      final box = tester.widget<Container>(find.byType(Container));
-      colors[level] = (box.decoration! as BoxDecoration).color!;
+      final box = tester.widget<DecoratedBox>(find.byType(DecoratedBox).last);
+      colors[level] = (box.decoration as BoxDecoration).color!;
     }
     expect(colors[1], colors[3]);
     expect(colors[4], colors[9]);

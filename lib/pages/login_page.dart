@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import '../data/app_webview.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 import '../data/auth_store.dart';
@@ -227,6 +227,11 @@ class _LoginPageState extends State<LoginPage> {
                         : '返回帖子',
                   ),
                 ),
+                if (_login)
+                  TextButton(
+                    onPressed: _busy ? null : _browseAsGuest,
+                    child: const Text('以游客身份浏览'),
+                  ),
               ],
             ),
           ),
@@ -234,4 +239,16 @@ class _LoginPageState extends State<LoginPage> {
       ],
     ),
   );
+
+  Future<void> _browseAsGuest() async {
+    setState(() => _busy = true);
+    try {
+      await AuthStore.instance.enterGuestMode();
+      if (mounted) Navigator.of(context).pop(false);
+    } catch (_) {
+      if (mounted) setState(() => _error = '切换游客模式失败，请重试');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 }

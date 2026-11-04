@@ -23,9 +23,9 @@ class _MyContentPageState extends State<MyContentPage> {
   bool _busy = false, _more = true, _retryReset = true;
   String? _error;
   String get _title => switch (widget.kind) {
-    MyContent.threads => '我的发帖',
-    MyContent.replies => '我的回帖',
-    MyContent.saved => '我的收藏',
+    MyContent.threads => '发帖记录',
+    MyContent.replies => '回帖记录',
+    MyContent.saved => '收藏记录',
   };
   String _threadTitle(Json item) {
     final title = plainText(
@@ -44,11 +44,22 @@ class _MyContentPageState extends State<MyContentPage> {
   @override
   void initState() {
     super.initState();
+    AuthStore.instance.addListener(_accountChanged);
     _load();
+  }
+
+  void _accountChanged() {
+    if (!mounted || _account == AuthStore.instance.activeId) return;
+    setState(() {
+      _items.clear();
+      _more = false;
+      _error = '账号已切换，请重新打开此页面';
+    });
   }
 
   @override
   void dispose() {
+    AuthStore.instance.removeListener(_accountChanged);
     _api.close();
     super.dispose();
   }
@@ -102,7 +113,7 @@ class _MyContentPageState extends State<MyContentPage> {
             : incoming.length >= 20;
       });
     } catch (e) {
-      if (mounted) {
+      if (mounted && _account == AuthStore.instance.activeId) {
         setState(() => _error = e is TiebaException ? e.message : '加载失败，请重试');
       }
     } finally {
@@ -115,12 +126,14 @@ class _MyContentPageState extends State<MyContentPage> {
     appBar: AppBar(title: Text(_title)),
     body: RefreshIndicator(
       onRefresh: () => _load(reset: true),
-      child: ListView(
+      child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(12),
-        children: [
-          for (final item in _items)
-            Card(
+        itemCount: _items.length + 1,
+        itemBuilder: (context, index) {
+          if (index < _items.length) {
+            final item = _items[index];
+            return Card(
               clipBehavior: Clip.antiAlias,
               child: InkWell(
                 onTap: () {
@@ -154,7 +167,10 @@ class _MyContentPageState extends State<MyContentPage> {
                     children: [
                       if (widget.kind == MyContent.replies) ...[
                         if (contentParts(item['content']).isNotEmpty)
-                          PostContent(parts: contentParts(item['content']))
+                          PostContent(
+                            parts: contentParts(item['content']),
+                            openImages: false,
+                          )
                         else
                           Text(
                             flag(item['is_post_deleted'])
@@ -205,24 +221,29 @@ class _MyContentPageState extends State<MyContentPage> {
                   ),
                 ),
               ),
-            ),
-          if (_error != null)
-            Column(
-              children: [
-                Text(_error!),
-                TextButton(
-                  onPressed: () => _load(reset: _retryReset),
-                  child: const Text('重试'),
+            );
+          }
+          return Column(
+            children: [
+              if (_error != null)
+                Column(
+                  children: [
+                    Text(_error!),
+                    TextButton(
+                      onPressed: () => _load(reset: _retryReset),
+                      child: const Text('重试'),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          if (_busy)
-            const Center(child: CircularProgressIndicator())
-          else if (_error == null && _more)
-            TextButton(onPressed: _load, child: const Text('加载更多'))
-          else if (_error == null && _items.isEmpty)
-            const Center(child: Text('暂无内容')),
-        ],
+              if (_busy)
+                const Center(child: CircularProgressIndicator())
+              else if (_error == null && _more)
+                TextButton(onPressed: _load, child: const Text('加载更多'))
+              else if (_error == null && _items.isEmpty)
+                const Center(child: Text('暂无内容')),
+            ],
+          );
+        },
       ),
     ),
   );

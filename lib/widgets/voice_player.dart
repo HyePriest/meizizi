@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../data/voice_channel.dart';
 
 import '../data/models.dart';
 
@@ -13,11 +13,13 @@ class VoicePlayer extends StatefulWidget {
 }
 
 class _VoicePlayerState extends State<VoicePlayer> with WidgetsBindingObserver {
-  static const _channel = MethodChannel('com.jknl.tieba/voice');
+  static const _channel = VoiceChannel();
   static final ValueNotifier<String> _active = ValueNotifier('');
   final _id = UniqueKey().toString();
   bool _playing = false, _loading = false;
   int _position = 0;
+  int _revision = 0;
+  bool _canResume = false;
   Timer? _timer;
   String? _error;
   @override
@@ -29,6 +31,8 @@ class _VoicePlayerState extends State<VoicePlayer> with WidgetsBindingObserver {
 
   void _changed() {
     if (_active.value != _id && mounted) {
+      _revision++;
+      _canResume = false;
       _timer?.cancel();
       setState(() {
         _playing = false;
@@ -38,13 +42,43 @@ class _VoicePlayerState extends State<VoicePlayer> with WidgetsBindingObserver {
     }
   }
 
+  @override
+  void didUpdateWidget(covariant VoicePlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if ([
+      'voice_md5',
+      'voice_url',
+      'src',
+    ].any((key) => oldWidget.part[key] != widget.part[key])) {
+      _revision++;
+      _timer?.cancel();
+      if (_active.value == _id) {
+        unawaited(
+          _channel.invokeMethod('stop', {'id': _id}).catchError((_) {}),
+        );
+        _active.value = '';
+      }
+      _playing = false;
+      _loading = false;
+      _canResume = false;
+      _position = 0;
+      _error = null;
+    }
+  }
+
   Future<void> _toggle() async {
     if (_loading) return;
+    final revision = ++_revision;
     try {
       if (_playing) {
-        await _channel.invokeMethod('pause', {'id': _id});
-        if (mounted) setState(() => _playing = false);
         _timer?.cancel();
+        setState(() => _loading = true);
+        await _channel.invokeMethod('pause', {'id': _id});
+        if (!mounted || revision != _revision || _active.value != _id) return;
+        setState(() {
+          _playing = false;
+          _loading = false;
+        });
         return;
       }
       final md5 = firstText([widget.part['voice_md5']]);
@@ -55,7 +89,7 @@ class _VoicePlayerState extends State<VoicePlayer> with WidgetsBindingObserver {
             }).toString()
           : direct;
       if (Uri.tryParse(url)?.scheme != 'https') throw const FormatException();
-      final resume = _active.value == _id && _position > 0;
+      final resume = _active.value == _id && _canResume;
       _active.value = _id;
       setState(() {
         _loading = true;
@@ -64,7 +98,8 @@ class _VoicePlayerState extends State<VoicePlayer> with WidgetsBindingObserver {
       await _channel
           .invokeMethod(resume ? 'resume' : 'play', {'url': url, 'id': _id})
           .timeout(const Duration(seconds: 18));
-      if (!mounted || _active.value != _id) return;
+      if (!mounted || revision != _revision || _active.value != _id) return;
+      _canResume = true;
       setState(() {
         _playing = true;
         _loading = false;
@@ -76,21 +111,32 @@ class _VoicePlayerState extends State<VoicePlayer> with WidgetsBindingObserver {
             'state',
             {'id': _id},
           );
-          if (!mounted || _active.value != _id) return;
+          if (!mounted || revision != _revision || _active.value != _id) return;
           setState(() {
             _position = number(state?['position']);
             _playing = state?['playing'] == true;
             if (state?['error'] == true) _error = '播放失败，点击重试';
+            if (state?['completed'] == true || state?['error'] == true) {
+              _canResume = false;
+              _position = 0;
+            }
           });
           if (!_playing) {
             _timer?.cancel();
-            _position = 0;
           }
         } catch (_) {
+          if (!mounted || revision != _revision || _active.value != _id) return;
           _timer?.cancel();
+          setState(() {
+            _playing = false;
+            _canResume = false;
+            _error = '播放失败，点击重试';
+          });
         }
       });
     } catch (_) {
+      if (!mounted || revision != _revision) return;
+      _canResume = false;
       unawaited(_channel.invokeMethod('stop', {'id': _id}).catchError((_) {}));
       if (mounted && _active.value == _id)
         setState(() {
@@ -112,6 +158,7 @@ class _VoicePlayerState extends State<VoicePlayer> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _revision++;
     WidgetsBinding.instance.removeObserver(this);
     _active.removeListener(_changed);
     _timer?.cancel();

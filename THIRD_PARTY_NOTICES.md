@@ -8,6 +8,9 @@
 - shared_preferences、webview_flutter 与 flutter_lints：https://github.com/flutter/packages
 - flutter_secure_storage：https://github.com/mogol/flutter_secure_storage
 - html：https://github.com/dart-lang/html
+- Windows 网页：flutter_inappwebview（Apache-2.0），https://github.com/pichillilorenzo/flutter_inappwebview
+- Windows 文件、目录与浏览器入口：file_selector、path_provider、url_launcher（BSD-3-Clause），https://github.com/flutter/packages
+- Windows 语音：media_kit 与 media_kit_libs_windows_audio（MIT），https://github.com/media-kit/media-kit 。其 libmpv/FFmpeg 原生库的构建来源：https://github.com/media-kit/libmpv-win32-audio-build/releases/tag/2023-09-24 ，原生组件按各自许可证使用。
 - Android 构建使用 Gradle：https://github.com/gradle/gradle
 
 各组件按其项目许可证使用。Flutter 收集的依赖许可证可在应用的关于页面查看，Gradle wrapper 属于 Gradle 项目。

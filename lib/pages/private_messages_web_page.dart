@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import '../data/app_webview.dart';
 
 import 'dart:async';
 

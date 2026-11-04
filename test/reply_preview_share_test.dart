@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tieba/data/local_store.dart';
+import 'package:tieba/data/platform_session.dart';
 import 'package:tieba/data/post_protocol.dart';
 import 'package:tieba/data/share_content.dart';
 import 'package:tieba/data/tieba_api.dart';
@@ -117,15 +118,17 @@ void main() {
     expect(share.text, '主题\n汪峰在吧\n作者：正文[图片]\n${share.url}');
     MethodCall? call;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(ShareContent.channel, (value) async {
+        .setMockMethodCallHandler(PlatformSession.androidChannel, (value) async {
           call = value;
           return null;
         });
     await share.share();
-    expect(call?.method, 'shareText');
-    expect(call?.arguments, {'title': '主题', 'text': share.text});
+    expect(call?.method, 'shareImage');
+    expect(call?.arguments['title'], '主题');
+    expect(call?.arguments['url'], share.url);
+    expect(call?.arguments['bytes'], isNotEmpty);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(ShareContent.channel, null);
+        .setMockMethodCallHandler(PlatformSession.androidChannel, null);
   });
   testWidgets(
     'preview box opens once and count only appears for more replies',
@@ -196,7 +199,7 @@ void main() {
                       child: const Text('回复'),
                     ),
                     onShare: () => shared++,
-                    onCopyLink: () {},
+                    onReport: () {},
                     onTap: open,
                   ),
                 ),
@@ -204,14 +207,9 @@ void main() {
             ),
           );
           expect(tester.takeException(), isNull);
-          expect(find.text('123456'), findsOneWidget);
+          expect(find.text('回复'), findsOneWidget);
           expect(find.text('本吧自定义等级'), findsOneWidget);
-          final likes = tester.getRect(find.text('123456'));
-          final menu = tester.getRect(find.byTooltip('评论选项'));
-          final name = tester.getRect(find.text('一个很长很长的作者名称'));
-          expect(likes.right, lessThanOrEqualTo(menu.left));
-          expect(likes.center.dy, closeTo(name.center.dy, 1));
-          expect(find.text('IP：黑龙江省哈尔滨市'), findsOneWidget);
+          expect(find.text('黑龙江省哈尔滨市'), findsOneWidget);
           await tester.tap(find.text('原评论正文'));
           await tester.pump();
           expect(opened, 1);
@@ -221,9 +219,9 @@ void main() {
           expect(opened, 1);
           await tester.tap(find.byTooltip('评论选项'));
           await tester.pumpAndSettle();
-          await tester.tap(find.text('分享评论'));
-          await tester.pumpAndSettle();
-          expect(shared, 1);
+          expect(find.text('分享评论'), findsNothing);
+          expect(find.text('举报评论'), findsOneWidget);
+          expect(shared, 0);
           expect(opened, 1);
           expect(tester.takeException(), isNull);
         },
@@ -299,7 +297,7 @@ void main() {
       expect(find.text('完整楼中楼回复'), findsNothing);
       expect(find.text('服务端原评论'), findsOneWidget);
       expect(LocalStore.instance.blockedUsers['id:88'], '回复作者');
-      await tester.tap(find.text('撤销'));
+      await LocalStore.instance.unblock('id:88', forum: false);
       await tester.pumpAndSettle();
       expect(find.text('完整楼中楼回复'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());

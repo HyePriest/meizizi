@@ -1,7 +1,7 @@
 name: tieba
 description: "精简的第三方贴吧 Android 客户端"
 publish_to: 'none'
-version: 0.10.12+34
+version: 1.2.0+60
 
 environment:
   sdk: ^3.13.5
@@ -18,6 +18,12 @@ dependencies:
   webview_flutter_android: ^4.14.1
   flutter_secure_storage: ^10.0.0
   html: ^0.15.6
+  flutter_inappwebview: ^6.1.5
+  file_selector: ^1.1.0
+  path_provider: ^2.1.6
+  url_launcher: ^6.3.3
+  media_kit: ^1.2.6
+  media_kit_libs_windows_audio: ^1.0.9
 
 dev_dependencies:
   flutter_test:
@@ -27,6 +33,8 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/badges/
     - assets/levels/
     - assets/emoji/
     - assets/emoji/baidu/
+

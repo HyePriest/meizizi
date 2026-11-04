@@ -42,11 +42,11 @@ void main() {
         expect(tester.widget<Text>(find.text('123456')).overflow, isNull);
         final reply = tester.getRect(find.text('回复'));
         final floor = tester.getRect(find.text('楼中楼 12345'));
-        final ip = tester.getRect(find.text('IP：黑龙江省哈尔滨市'));
+        final ip = tester.getRect(find.text('黑龙江省哈尔滨市'));
         expect(floor.center.dy, closeTo(reply.center.dy, 1));
         expect(ip.center.dy, closeTo(reply.center.dy, 1));
         expect(ip.right, lessThanOrEqualTo(width));
-        expect(tester.widget<Text>(find.text('IP：黑龙江省哈尔滨市')).maxLines, 1);
+        expect(tester.widget<Text>(find.text('黑龙江省哈尔滨市')).maxLines, 1);
       });
     }
   }

@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -11,32 +13,55 @@ import 'models.dart';
 class AppUpdate extends ChangeNotifier {
   AppUpdate._();
   static final instance = AppUpdate._();
-  static const version = '0.10.12';
-  static const projectUrl = 'https://github.com/HyePriest/tieba';
+  static String version = '';
+  static const projectUrl = 'https://github.com/HyePriest/meizizi';
   static const releasesUrl = '$projectUrl/releases/latest';
+  static final _versionPattern = RegExp(
+    r'^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$',
+  );
+  static const _releasePath = '/HyePriest/meizizi/releases/';
+  String _tag = '';
   String latest = '', notes = '', _download = '';
   String? error, checkError;
   bool checking = false, downloading = false, readyToInstall = false;
   DateTime? _checkedAt;
-  bool get available => newer(latest, version) && _download.isNotEmpty;
+  bool get available =>
+      version.isNotEmpty && newer(latest, version) && _download.isNotEmpty;
   String get downloadUrl => _download.isEmpty ? releasesUrl : _download;
   String get releaseUrl =>
-      latest.isEmpty ? releasesUrl : '$projectUrl/releases/tag/v$latest';
+      _tag.isEmpty ? releasesUrl : '$projectUrl/releases/tag/$_tag';
 
   bool _validDownload(String url) {
     final uri = Uri.tryParse(url);
     return uri != null &&
         uri.scheme == 'https' &&
         uri.host == 'github.com' &&
-        uri.path.startsWith('/HyePriest/tieba/releases/download/') &&
+        uri.path.startsWith('${_releasePath}download/') &&
         uri.path.endsWith('.apk');
   }
 
+  // Prefer the ARM64 build, then a universal APK such as app-release.apk.
+  // Do not select an APK explicitly built for another architecture.
+  String? _selectDownload(Iterable<String> urls) {
+    String? universal;
+    for (final url in urls.where(_validDownload)) {
+      final name = Uri.parse(url).pathSegments.last.toLowerCase();
+      if (name.contains('arm64') || name.contains('aarch64')) return url;
+      if (name.contains('armeabi') ||
+          name.contains('armv7') ||
+          name.contains('x86'))
+        continue;
+      universal ??= url;
+    }
+    return universal;
+  }
+
   void _acceptRelease(String tag, String url, String body) {
-    if (!RegExp(r'^v?\d+\.\d+\.\d+$').hasMatch(tag) || !_validDownload(url)) {
+    if (!_versionPattern.hasMatch(tag) || !_validDownload(url)) {
       throw const FormatException();
     }
     if (_download != url) readyToInstall = false;
+    _tag = tag;
     latest = tag.replaceFirst(RegExp(r'^v'), '');
     notes = body;
     _download = url;
@@ -48,7 +73,7 @@ class AppUpdate extends ChangeNotifier {
     for (var redirects = 0; redirects < 5; redirects++) {
       if (uri.scheme != 'https' ||
           uri.host != 'github.com' ||
-          !uri.path.startsWith('/HyePriest/tieba/releases/')) {
+          !uri.path.startsWith(_releasePath)) {
         throw const FormatException();
       }
       final request = http.Request('GET', uri)..followRedirects = false;
@@ -63,12 +88,11 @@ class AppUpdate extends ChangeNotifier {
         continue;
       }
       if (response.statusCode != 200 ||
-          !uri.path.startsWith('/HyePriest/tieba/releases/tag/')) {
+          !uri.path.startsWith('${_releasePath}tag/')) {
         throw const FormatException();
       }
       final tag = uri.pathSegments.last;
-      if (!RegExp(r'^v?\d+\.\d+\.\d+$').hasMatch(tag))
-        throw const FormatException();
+      if (!_versionPattern.hasMatch(tag)) throw const FormatException();
       final assets = await client
           .get(
             Uri.parse('$projectUrl/releases/expanded_assets/$tag'),
@@ -79,16 +103,9 @@ class AppUpdate extends ChangeNotifier {
       final links = html
           .parse(utf8.decode(assets.bodyBytes))
           .querySelectorAll('a[href]');
-      final url = links
-          .map((link) => uri.resolve(link.attributes['href']!).toString())
-          .where(
-            (url) =>
-                _validDownload(url) &&
-                Uri.parse(url).pathSegments.last
-                    .toLowerCase()
-                    .contains('arm64'),
-          )
-          .firstOrNull;
+      final url = _selectDownload(
+        links.map((link) => uri.resolve(link.attributes['href']!).toString()),
+      );
       if (url == null) throw const FormatException();
       final document = html.parse(utf8.decode(response.bodyBytes));
       final body =
@@ -110,21 +127,39 @@ class AppUpdate extends ChangeNotifier {
   }
 
   static bool newer(String candidate, String installed) {
-    List<int> parts(String value) => value
-        .replaceFirst(RegExp(r'^v'), '')
-        .split('.')
-        .map((n) => int.tryParse(n) ?? 0)
-        .toList();
-    final a = parts(candidate), b = parts(installed);
+    final a = _versionPattern.firstMatch(candidate),
+        b = _versionPattern.firstMatch(installed);
+    if (a == null || b == null) return false;
     for (var i = 0; i < 3; i++) {
-      final x = i < a.length ? a[i] : 0, y = i < b.length ? b[i] : 0;
+      final x = int.parse(a.group(i + 1)!);
+      final y = int.parse(b.group(i + 1)!);
       if (x != y) return x > y;
     }
-    return false;
+    final preA = a.group(4), preB = b.group(4);
+    if (preA == null) return preB != null;
+    if (preB == null) return false;
+    final aa = preA.split('.'), bb = preB.split('.');
+    for (var i = 0; i < aa.length && i < bb.length; i++) {
+      if (aa[i] == bb[i]) continue;
+      final x = int.tryParse(aa[i]), y = int.tryParse(bb[i]);
+      if (x != null && y != null) return x > y;
+      if (x != null) return false;
+      if (y != null) return true;
+      return aa[i].compareTo(bb[i]) > 0;
+    }
+    return aa.length > bb.length;
   }
 
   Future<void> check({bool force = false}) async {
+    // Android release assets cannot update a Windows installation.
+    if (Platform.isWindows) {
+      version = await AuthStore.native.invokeMethod<String>('appVersion') ?? '';
+      checkError = null;
+      notifyListeners();
+      return;
+    }
     if (checking ||
+        downloading ||
         (!force &&
             _checkedAt != null &&
             DateTime.now().difference(_checkedAt!) < const Duration(hours: 6)))
@@ -134,13 +169,18 @@ class AppUpdate extends ChangeNotifier {
     notifyListeners();
     final client = http.Client();
     try {
+      version = await AuthStore.native.invokeMethod<String>('appVersion') ?? '';
+      if (!_versionPattern.hasMatch(version)) {
+        throw const FormatException('无法读取当前版本');
+      }
+      notifyListeners();
       try {
         // Release metadata is public; never attach Tieba credentials here.
         final response = await client
             .get(
               Uri.https(
                 'api.github.com',
-                '/repos/HyePriest/tieba/releases/latest',
+                '/repos/HyePriest/meizizi/releases/latest',
               ),
               headers: {
                 'Accept': 'application/vnd.github+json',
@@ -153,19 +193,13 @@ class AppUpdate extends ChangeNotifier {
         final tag = firstText([data['tag_name']]);
         if (flag(data['draft']) ||
             flag(data['prerelease']) ||
-            !RegExp(r'^v?\d+\.\d+\.\d+$').hasMatch(tag))
+            !_versionPattern.hasMatch(tag))
           throw const FormatException();
         final assets = objects(data['assets']);
-        final asset =
-            assets
-                .where(
-                  (a) =>
-                      RegExp(r'^tieba-.*arm64.*\.apk$')
-                          .hasMatch('${a['name']}'),
-                )
-                .firstOrNull ??
-            <String, dynamic>{};
-        final url = firstText([asset['browser_download_url']]);
+        final url = _selectDownload(
+          assets.map((asset) => firstText([asset['browser_download_url']])),
+        );
+        if (url == null) throw const FormatException();
         _acceptRelease(tag, url, firstText([data['body']]));
       } catch (_) {
         // Public release pages remain usable when the unauthenticated API is rate limited.
@@ -193,6 +227,9 @@ class AppUpdate extends ChangeNotifier {
       );
       if (result == 'ready') readyToInstall = true;
       if (result == 'permission') error = '允许此应用安装更新后，点击继续更新';
+    } on PlatformException catch (e) {
+      if (e.code == 'MISSING_UPDATE') readyToInstall = false;
+      error = e.message ?? '更新下载或安装未完成，请重试';
     } catch (_) {
       error = '更新下载或安装未完成，可重试或使用浏览器下载';
     } finally {

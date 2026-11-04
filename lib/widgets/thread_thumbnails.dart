@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../data/models.dart';
-import '../pages/image_page.dart';
 import '../pages/reading_page.dart';
+import 'hold_image_preview.dart';
 import 'post_widgets.dart';
+import 'reliable_image.dart';
 
 class ThreadThumbnails extends StatelessWidget {
   const ThreadThumbnails({super.key, required this.thread});
@@ -21,6 +22,7 @@ class ThreadThumbnails extends StatelessWidget {
               : () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => ReadingPage(
+                      previewThread: thread,
                       threadId: firstText([thread['id'], thread['tid']]),
                       title: firstText([thread['title']]),
                       forum: threadForumName(thread),
@@ -42,25 +44,21 @@ class ThreadThumbnails extends StatelessWidget {
             Expanded(
               child: AspectRatio(
                 aspectRatio: visible.length == 1 ? 1.8 : 1,
-                child: InkWell(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => ImagePage(
-                        url: '${visible[i]['original']}',
-                        urls: images.map((p) => '${p['original']}').toList(),
-                      ),
-                    ),
-                  ),
+                child: HoldImagePreview(
+                  urls: ['${visible[i]['original']}'],
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        Image.network(
-                          '${visible[i]['thumbnail']}',
+                        ReliableImage(
+                          urls: [
+                            '${visible[i]['thumbnail']}',
+                            '${visible[i]['original']}',
+                          ],
                           fit: BoxFit.cover,
                           cacheWidth: 450,
-                          errorBuilder: (_, _, _) => const ColoredBox(
+                          fallback: const ColoredBox(
                             color: Color(0xffeeeeee),
                             child: Icon(Icons.broken_image_outlined),
                           ),

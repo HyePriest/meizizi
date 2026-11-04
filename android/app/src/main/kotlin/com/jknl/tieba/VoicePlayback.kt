@@ -13,6 +13,7 @@ class VoicePlayback(private val context: Context) : MethodChannel.MethodCallHand
     private var identity = ""
     private var prepared = false
     private var failed = false
+    private var completed = false
     private var pending: MethodChannel.Result? = null
     private val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
@@ -21,7 +22,7 @@ class VoicePlayback(private val context: Context) : MethodChannel.MethodCallHand
     fun stop() {
         pending?.error("CANCELLED", "播放已停止", null)
         pending = null
-        player?.release(); player = null; prepared = false; identity = ""
+        player?.release(); player = null; prepared = false; completed = false; identity = ""
         @Suppress("DEPRECATION")
         audio.abandonAudioFocus(focusListener)
     }
@@ -30,6 +31,7 @@ class VoicePlayback(private val context: Context) : MethodChannel.MethodCallHand
         if (audio.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
             throw IllegalStateException("音频正在使用")
         player?.start()
+        completed = false
     }
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         val id = call.argument<String>("id") ?: ""
@@ -56,14 +58,25 @@ class VoicePlayback(private val context: Context) : MethodChannel.MethodCallHand
                         if (player === next) { failed = true; prepared = false; pending?.error("PLAY_FAILED", "语音加载失败", null); pending = null }
                         true
                     }
-                    next.setOnCompletionListener { @Suppress("DEPRECATION") audio.abandonAudioFocus(focusListener) }
+                    next.setOnCompletionListener {
+                        if (player === next) {
+                            completed = true
+                            @Suppress("DEPRECATION")
+                            audio.abandonAudioFocus(focusListener)
+                        }
+                    }
                     next.setDataSource(context, Uri.parse(url), mapOf("Referer" to "https://tieba.baidu.com/"))
                     next.prepareAsync()
                 }
-                "pause" -> { if (prepared) player?.pause(); result.success(null) }
+                "pause" -> {
+                    if (prepared) player?.pause()
+                    @Suppress("DEPRECATION")
+                    audio.abandonAudioFocus(focusListener)
+                    result.success(null)
+                }
                 "resume" -> { if (!prepared) throw IllegalStateException(); start(); result.success(null) }
                 "stop" -> { stop(); result.success(null) }
-                "state" -> result.success(mapOf("playing" to (prepared && player?.isPlaying == true), "position" to (if (prepared) player?.currentPosition else 0), "error" to failed))
+                "state" -> result.success(mapOf("playing" to (prepared && player?.isPlaying == true), "position" to (if (prepared) player?.currentPosition else 0), "error" to failed, "completed" to completed))
                 else -> result.notImplemented()
             }
         } catch (_: Exception) {
