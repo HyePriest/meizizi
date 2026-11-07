@@ -161,13 +161,32 @@ void main() {
     expect(find.text('请问有防误伤模组吗'), findsOneWidget);
 
     await tester.tap(find.text('回复 715'));
-    await tester.pump();
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(api.requested, [false, true]);
     expect(find.text('这是一条回复'), findsOneWidget);
     expect(find.textContaining('原来的帖子'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(minutes: 1));
+  });
+
+  test('likes on the same post are grouped, newest first', () {
+    Json like(String post, int who) => {
+      'post_id': post,
+      'thread_id': '9',
+      'agreeer': {'id': who},
+    };
+    final groups = groupLikes([
+      like('100', 1),
+      like('200', 2),
+      like('100', 3),
+      like('100', 4),
+      {
+        'thread_id': '7',
+        'agreeer': {'id': 5},
+      },
+    ]);
+    expect(groups.map((g) => g.length), [3, 1, 1]);
+    expect(groups.first.map((g) => object(g['agreeer'])['id']), [1, 3, 4]);
   });
 
   testWidgets('消息 puts 私信 beside replies, likes and mentions', (tester) async {
@@ -182,4 +201,87 @@ void main() {
     // Logged out here, so the 私信 tab asks to log in.
     expect(find.text('登录后查看私信'), findsOneWidget);
   });
+
+  testWidgets('replies keep loading past short pages, without a button', (
+    tester,
+  ) async {
+    final api = _PagedApi();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: UserPage(user: const {'id': 42}, api: api),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('回复 715'));
+    await tester.pumpAndSettle();
+    // Scroll to the end repeatedly; each time the next page arrives.
+    for (var i = 0; i < 6; i++) {
+      await tester.drag(find.text('回复 715'), const Offset(0, -3000));
+      await tester.pumpAndSettle();
+    }
+    expect(api.replyPages, [1, 2, 3, 4]);
+    expect(find.text('加载更多'), findsNothing);
+    expect(find.text('没有更多了'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(minutes: 1));
+  });
+
+  testWidgets('only a mostly sideways swipe switches 主题帖 and 回复', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: UserPage(user: const {'id': 42}, api: _ProfileApi()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final list = tester.getCenter(find.text('请问有防误伤模组吗'));
+    // Slanted downward scroll: stays on 主题帖.
+    await tester.dragFrom(list, const Offset(-120, -160));
+    await tester.pumpAndSettle();
+    expect(find.text('这是一条回复'), findsNothing);
+    await tester.flingFrom(
+      tester.getCenter(find.text('请问有防误伤模组吗')),
+      const Offset(-300, 10),
+      1500,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('这是一条回复'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(minutes: 1));
+  });
+}
+
+/// Replies arrive in short pages (17 or 18 of 20) with no has_more, as the
+/// real feed does; page 4 is empty.
+class _PagedApi extends _ProfileApi {
+  final replyPages = <int>[];
+
+  @override
+  Future<TiebaPage> userPosts(
+    String uid,
+    int page, {
+    bool replies = false,
+  }) async {
+    if (!replies) return super.userPosts(uid, page);
+    replyPages.add(page);
+    return TiebaPage({
+      'post_list': [
+        if (page < 4)
+          for (var i = 0; i < 17; i++)
+            {
+              'thread_id': '$page$i',
+              'post_id': '$page$i',
+              'title': '回复：帖子 $page-$i',
+              'content': [
+                {
+                  'post_content': [
+                    {'type': 0, 'text': '回复 $page-$i'},
+                  ],
+                },
+              ],
+            },
+      ],
+    });
+  }
 }

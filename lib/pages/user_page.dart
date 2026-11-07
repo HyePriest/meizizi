@@ -5,6 +5,8 @@ import '../data/tieba_api.dart';
 import '../widgets/app_snack_bar.dart';
 import '../widgets/post_widgets.dart';
 import '../widgets/thread_thumbnails.dart';
+import '../widgets/directional_page_drag.dart';
+import '../widgets/page_drag.dart';
 import 'reading_page.dart';
 import 'user_connections_page.dart';
 import '../widgets/desktop_layout.dart';
@@ -27,26 +29,18 @@ class UserPage extends StatefulWidget {
   State<UserPage> createState() => _UserPageState();
 }
 
-/// One list of a user's posts: their threads or their replies.
-class _Feed {
-  final items = <Json>[];
-  bool busy = false, more = true, retryReset = true;
-  int page = 0;
-  String? error;
-}
-
 class _UserPageState extends State<UserPage> {
   late final _api = widget.api ?? TiebaApi();
+  late final _pages = PageController();
+  late final _pageDrag = PageDrag(_pages);
+  // Pull to refresh reloads both lists.
+  final _refreshSignal = ValueNotifier(0);
   // The app bar shows the name once the header's name has scrolled away.
-  final _scroll = ScrollController();
   final _titleVisible = ValueNotifier(false);
   Json _user = {};
   bool _profileLoaded = false;
   String? _profileError;
   int _tab = 0;
-  final _feeds = [_Feed(), _Feed()];
-  _Feed get _feed => _feeds[_tab];
-  bool get _replies => _tab == 1;
 
   String get _uid => firstText([_user['id'], _user['user_id']]);
 
@@ -63,21 +57,25 @@ class _UserPageState extends State<UserPage> {
   void initState() {
     super.initState();
     _user = widget.user;
-    _scroll.addListener(
-      () => _titleVisible.value = _scroll.hasClients && _scroll.offset > 72,
-    );
     _refresh();
   }
 
   @override
   void dispose() {
-    _scroll.dispose();
+    _pageDrag.cancel();
+    _pages.dispose();
+    _refreshSignal.dispose();
     _titleVisible.dispose();
     _api.close();
     super.dispose();
   }
 
+  // The lists start their first page themselves once the profile is in.
+  bool _firstLoad = true;
+
   Future<void> _refresh() async {
+    final reloadLists = !_firstLoad;
+    _firstLoad = false;
     setState(() => _profileError = null);
     try {
       final result = await _api.userProfile(widget.user);
@@ -91,74 +89,26 @@ class _UserPageState extends State<UserPage> {
       setState(
         () => _profileError = e is TiebaException ? e.message : '主页加载失败，请重试',
       );
-      if (_uid.isEmpty || _uid == '0') return;
     }
-    for (final feed in _feeds) {
-      feed
-        ..items.clear()
-        ..page = 0
-        ..more = true
-        ..error = null;
-    }
-    await _load(reset: true);
-  }
-
-  Future<void> _load({bool reset = false}) async {
-    final feed = _feed;
-    final replies = _replies;
-    if (feed.busy) return;
-    feed
-      ..retryReset = reset
-      ..busy = true
-      ..error = null;
-    setState(() {});
-    try {
-      if (_uid.isEmpty || _uid == '0') {
-        throw const TiebaException('暂时无法获取该用户的主页');
-      }
-      final page = reset ? 1 : feed.page + 1;
-      final result = await _api.userPosts(_uid, page, replies: replies);
-      if (!mounted) return;
-      final incoming = objects(result.data['post_list']);
-      String key(Json p) => replies
-          ? firstText([p['post_id'], p['id']])
-          : firstText([p['thread_id'], p['tid'], p['id']]);
-      if (reset) feed.items.clear();
-      final seen = feed.items.map(key).toSet();
-      feed.items.addAll(incoming.where((p) => seen.add(key(p))));
-      feed
-        ..page = page
-        ..more = result.data.containsKey('has_more')
-            ? flag(result.data['has_more'])
-            : incoming.length >= 20;
-    } catch (e) {
-      feed.error = e is TiebaException ? e.message : '加载失败，请重试';
-    } finally {
-      feed.busy = false;
-      if (mounted) setState(() {});
-    }
+    if (reloadLists) _refreshSignal.value++;
   }
 
   void _selectTab(int tab) {
-    if (tab == _tab) return;
-    setState(() => _tab = tab);
-    if (_feed.page == 0 && !_feed.busy) _load(reset: true);
+    if (tab == _tab || !_pages.hasClients) return;
+    _pages.animateToPage(
+      tab,
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+    );
   }
 
-  void _openPost(Json post) {
-    final tid = firstText([post['thread_id'], post['tid'], post['id']]);
-    if (tid.isEmpty) return;
-    final reply = _replies && number(post['post_id']) > 0;
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ReadingPage(
-          threadId: tid,
-          title: _threadTitle(post),
-          forum: threadForumName(post),
-          targetPostId: reply ? '${post['post_id']}' : null,
-        ),
-      ),
-    );
+  bool _trackTitle(ScrollNotification notification) {
+    if (notification.depth == 0 && notification.metrics.axis == Axis.vertical) {
+      _titleVisible.value = notification.metrics.pixels > 72;
+    }
+    return false;
   }
 
   @override
@@ -166,16 +116,17 @@ class _UserPageState extends State<UserPage> {
     child: DesktopRefreshShortcut(onRefresh: _refresh, child: _page(context)),
   );
 
-  Widget _page(BuildContext context) {
-    final feed = _feed;
-    return Scaffold(
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        edgeOffset: MediaQuery.paddingOf(context).top + kToolbarHeight,
-        child: CustomScrollView(
-          controller: _scroll,
+  Widget _page(BuildContext context) => Scaffold(
+    body: RefreshIndicator(
+      onRefresh: _refresh,
+      edgeOffset: MediaQuery.paddingOf(context).top + kToolbarHeight,
+      // Pull from either the header or the top of a list.
+      notificationPredicate: (n) => n.metrics.axis == Axis.vertical,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _trackTitle,
+        child: NestedScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
+          headerSliverBuilder: (context, _) => [
             SliverAppBar(
               pinned: true,
               surfaceTintColor: Colors.transparent,
@@ -189,74 +140,247 @@ class _UserPageState extends State<UserPage> {
               ),
             ),
             SliverToBoxAdapter(
-              child: _UserHeader(
-                user: _user,
-                loaded: _profileLoaded,
-                error: _profileError,
-                onRetry: _refresh,
-                onConnections: _openConnections,
+              child: DirectionalPageDragArea(
+                drag: _pageDrag,
+                child: _UserHeader(
+                  user: _user,
+                  loaded: _profileLoaded,
+                  error: _profileError,
+                  onRetry: _refresh,
+                  onConnections: _openConnections,
+                ),
               ),
             ),
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _TabsHeader(
-                selected: _tab,
-                threads: number(_user['thread_num']),
-                replies: number(_user['post_num']),
-                onSelected: _selectTab,
+            SliverOverlapAbsorber(
+              handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+              sliver: SliverPersistentHeader(
+                pinned: true,
+                delegate: _TabsHeader(
+                  selected: _tab,
+                  threads: number(_user['thread_num']),
+                  replies: number(_user['post_num']),
+                  onSelected: _selectTab,
+                ),
               ),
             ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-              sliver: SliverList.builder(
-                itemCount: feed.items.length,
-                itemBuilder: (context, index) {
-                  final post = feed.items[index];
-                  return _replies
-                      ? _ReplyCard(post: post, onTap: () => _openPost(post))
-                      : _ThreadCard(post: post, onTap: () => _openPost(post));
-                },
-              ),
-            ),
-            SliverToBoxAdapter(child: _feedFooter(feed)),
           ],
+          // PageView's own drag would take slanted vertical scrolls, so only
+          // mostly-sideways swipes switch between 主题帖 and 回复.
+          body: DirectionalPageDragArea(
+            drag: _pageDrag,
+            child: PageView(
+              controller: _pages,
+              physics: const PageScrollPhysics(
+                parent: NeverScrollableScrollPhysics(),
+              ),
+              onPageChanged: (tab) => setState(() => _tab = tab),
+              children: [
+                for (final replies in [false, true])
+                  _UserPosts(
+                    key: ValueKey('$_uid:$replies'),
+                    api: _api,
+                    uid: _uid,
+                    replies: replies,
+                    waiting: !_profileLoaded && _profileError == null,
+                    refreshSignal: _refreshSignal,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// One of the user's lists: their threads or their replies. Pages load on
+/// their own as the end comes into view.
+class _UserPosts extends StatefulWidget {
+  const _UserPosts({
+    super.key,
+    required this.api,
+    required this.uid,
+    required this.replies,
+    required this.waiting,
+    required this.refreshSignal,
+  });
+  final TiebaApi api;
+  final String uid;
+  final bool replies;
+
+  /// The profile, which gives the user ID, is still loading.
+  final bool waiting;
+  final Listenable refreshSignal;
+
+  @override
+  State<_UserPosts> createState() => _UserPostsState();
+}
+
+class _UserPostsState extends State<_UserPosts>
+    with AutomaticKeepAliveClientMixin {
+  final _items = <Json>[];
+  bool _busy = false, _more = true, _retryReset = true;
+  int _page = 0, _emptyLoads = 0, _revision = 0;
+  String? _error;
+
+  /// Pages in a row that added nothing new. The server sends no has_more and
+  /// often returns short pages, so stop only after a few empty ones.
+  static const _maxEmptyLoads = 2;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.refreshSignal.addListener(_reset);
+  }
+
+  @override
+  void dispose() {
+    widget.refreshSignal.removeListener(_reset);
+    super.dispose();
+  }
+
+  void _reset() => _load(reset: true);
+
+  String _key(Json p) => widget.replies
+      ? firstText([p['post_id'], p['id']])
+      : firstText([p['thread_id'], p['tid'], p['id']]);
+
+  Future<void> _load({bool reset = false}) async {
+    if (_busy && !reset) return;
+    final revision = ++_revision;
+    _retryReset = reset;
+    setState(() {
+      _busy = true;
+      _error = null;
+      if (reset) _emptyLoads = 0;
+    });
+    try {
+      final uid = widget.uid;
+      if (uid.isEmpty || uid == '0') {
+        throw const TiebaException('暂时无法获取该用户的主页');
+      }
+      final page = reset ? 1 : _page + 1;
+      final result = await widget.api.userPosts(
+        uid,
+        page,
+        replies: widget.replies,
+      );
+      if (!mounted || revision != _revision) return;
+      final incoming = objects(result.data['post_list']);
+      setState(() {
+        if (reset) _items.clear();
+        final seen = _items.map(_key).toSet();
+        final before = _items.length;
+        _items.addAll(incoming.where((p) => seen.add(_key(p))));
+        _page = page;
+        _emptyLoads = _items.length > before ? 0 : _emptyLoads + 1;
+        _more = result.data.containsKey('has_more')
+            ? flag(result.data['has_more'])
+            : incoming.isNotEmpty && _emptyLoads < _maxEmptyLoads;
+      });
+    } catch (e) {
+      if (mounted && revision == _revision) {
+        setState(() => _error = e is TiebaException ? e.message : '加载失败，请重试');
+      }
+    } finally {
+      if (mounted && revision == _revision) setState(() => _busy = false);
+    }
+  }
+
+  void _open(Json post) {
+    final tid = firstText([post['thread_id'], post['tid'], post['id']]);
+    if (tid.isEmpty) return;
+    final reply = widget.replies && number(post['post_id']) > 0;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ReadingPage(
+          threadId: tid,
+          title: _threadTitle(post),
+          forum: threadForumName(post),
+          targetPostId: reply ? '${post['post_id']}' : null,
         ),
       ),
     );
   }
 
-  Widget _feedFooter(_Feed feed) {
+  /// The end of the list came into view: fetch the next page.
+  void _reachedEnd() {
+    if (widget.waiting || !_more || _busy || _error != null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_busy) _load(reset: _page == 0);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
     final muted = TextStyle(
       color: Theme.of(context).colorScheme.onSurfaceVariant,
     );
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        16,
-        16,
-        24 + MediaQuery.paddingOf(context).bottom,
-      ),
-      child: Center(
-        child: feed.error != null
-            ? Column(
-                children: [
-                  Text(feed.error!, style: muted, textAlign: TextAlign.center),
-                  TextButton(
-                    onPressed: () => _load(reset: feed.retryReset),
-                    child: const Text('重试'),
+    return Builder(
+      builder: (context) => CustomScrollView(
+        key: PageStorageKey('posts-${widget.replies}'),
+        slivers: [
+          SliverOverlapInjector(
+            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+            sliver: SliverList.builder(
+              itemCount: _items.length,
+              itemBuilder: (context, index) {
+                final post = _items[index];
+                return widget.replies
+                    ? _ReplyCard(post: post, onTap: () => _open(post))
+                    : _ThreadCard(post: post, onTap: () => _open(post));
+              },
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Builder(
+              builder: (context) {
+                _reachedEnd();
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    16,
+                    16,
+                    24 + MediaQuery.paddingOf(context).bottom,
                   ),
-                ],
-              )
-            : feed.busy
-            ? const CircularProgressIndicator()
-            : feed.more
-            ? TextButton(onPressed: _load, child: const Text('加载更多'))
-            : Text(
-                feed.items.isEmpty
-                    ? (_replies ? '没有可公开查看的回复' : '没有可公开查看的主题帖')
-                    : '没有更多了',
-                style: muted,
-              ),
+                  child: Center(
+                    child: _error != null
+                        ? Column(
+                            children: [
+                              Text(
+                                _error!,
+                                style: muted,
+                                textAlign: TextAlign.center,
+                              ),
+                              TextButton(
+                                onPressed: () => _load(reset: _retryReset),
+                                child: const Text('重试'),
+                              ),
+                            ],
+                          )
+                        : _busy || _more || widget.waiting
+                        ? const CircularProgressIndicator()
+                        : Text(
+                            _items.isEmpty
+                                ? (widget.replies
+                                      ? '没有可公开查看的回复'
+                                      : '没有可公开查看的主题帖')
+                                : '没有更多了',
+                            style: muted,
+                          ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

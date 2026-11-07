@@ -6,11 +6,20 @@ import '../data/tieba_api.dart';
 import '../widgets/post_widgets.dart';
 import 'private_messages_page.dart';
 import 'reading_page.dart';
+import 'user_page.dart';
 import '../widgets/desktop_layout.dart';
 
 /// 消息: private messages, and the replies, likes and mentions others sent.
 class MessagesPage extends StatelessWidget {
-  const MessagesPage({super.key, this.initialTab = 0, this.counts = const {}});
+  const MessagesPage({
+    super.key,
+    this.initialTab = 0,
+    this.counts = const {},
+    this.api,
+  });
+
+  /// Replaces the network client for the notification tabs, for tests.
+  final TiebaApi? api;
 
   /// 0 私信, 1 回复我的, 2 收到的赞, 3 @我的.
   final int initialTab;
@@ -28,7 +37,7 @@ class MessagesPage extends StatelessWidget {
       child: Badge.count(
         count: count,
         isLabelVisible: count > 0,
-        offset: const Offset(14, -6),
+        offset: const Offset(18, -8),
         child: Text(label),
       ),
     );
@@ -49,12 +58,12 @@ class MessagesPage extends StatelessWidget {
           ],
         ),
       ),
-      body: const TabBarView(
+      body: TabBarView(
         children: [
-          PrivateMessagesPage(embedded: true),
-          _MessagesList(kind: MessageKind.replies),
-          _MessagesList(kind: MessageKind.likes),
-          _MessagesList(kind: MessageKind.mentions),
+          const PrivateMessagesPage(embedded: true),
+          _MessagesList(kind: MessageKind.replies, api: api),
+          _MessagesList(kind: MessageKind.likes, api: api),
+          _MessagesList(kind: MessageKind.mentions, api: api),
         ],
       ),
     ),
@@ -62,15 +71,16 @@ class MessagesPage extends StatelessWidget {
 }
 
 class _MessagesList extends StatefulWidget {
-  const _MessagesList({required this.kind});
+  const _MessagesList({required this.kind, this.api});
   final MessageKind kind;
+  final TiebaApi? api;
   @override
   State<_MessagesList> createState() => _MessagesListState();
 }
 
 class _MessagesListState extends State<_MessagesList>
     with AutomaticKeepAliveClientMixin {
-  final _api = TiebaApi();
+  late final _api = widget.api ?? TiebaApi();
   final _items = <Json>[];
   late final String _account = AuthStore.instance.activeId;
   int _page = 0;
@@ -138,92 +148,38 @@ class _MessagesListState extends State<_MessagesList>
 
   Json _user(Json item) =>
       object(item[widget.kind == MessageKind.likes ? 'agreeer' : 'replyer']);
-  Widget _card(Json item) {
-    final user = _user(item);
+
+  void _open(Json item) {
     final thread = {
       ...object(item['thread_info']),
       ...object(item['thread_content']),
     };
-    final title = firstText([item['title'], thread['title']], '查看帖子');
-    final forum = firstText([item['fname'], thread['fname']]);
-    final content = widget.kind == MessageKind.likes
-        ? object(item['post_info'])['content']
-        : item['content'];
-    final quote = item['quote_content'];
     final tid = firstText([item['thread_id'], thread['id']]);
-    final unavailable = flag(item['is_del']) || tid.isEmpty || tid == '0';
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: unavailable
-            ? null
-            : () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => ReadingPage(
-                    threadId: tid,
-                    title: title,
-                    forum: forum,
-                    targetPostId:
-                        !flag(item['is_floor']) && number(item['post_id']) > 0
-                        ? '${item['post_id']}'
-                        : null,
-                    targetReplyId:
-                        flag(item['is_floor']) && number(item['post_id']) > 0
-                        ? '${item['post_id']}'
-                        : null,
-                    postId:
-                        flag(item['is_floor']) && number(item['quote_pid']) > 0
-                        ? '${item['quote_pid']}'
-                        : null,
-                  ),
-                ),
-              ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              UserHeader(
-                user: user,
-                subtitle:
-                    '${switch (widget.kind) {
-                      MessageKind.replies => '回复了你',
-                      MessageKind.likes => '赞了你的内容',
-                      MessageKind.mentions => '提到了你',
-                    }} · ${commentTime(item['time'] ?? item['op_time'])}',
-              ),
-              if (contentParts(content).isNotEmpty) ...[
-                const SizedBox(height: 10),
-                InlinePostContent(parts: contentParts(content), maxLines: 8),
-              ],
-              if (contentParts(quote).isNotEmpty) ...[
-                const SizedBox(height: 8),
-                InlinePostContent(
-                  prefix: '我的原评论：',
-                  parts: contentParts(quote),
-                  maxLines: 4,
-                ),
-              ],
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${unavailable ? '原内容已不可用 · ' : ''}$title${forum.isEmpty ? '' : '\n$forum吧'}',
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-            ],
-          ),
+    if (flag(item['is_del']) || tid.isEmpty || tid == '0') return;
+    final floor = flag(item['is_floor']);
+    final post = number(item['post_id']) > 0 ? '${item['post_id']}' : null;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ReadingPage(
+          threadId: tid,
+          title: firstText([item['title'], thread['title']], '查看帖子'),
+          forum: firstText([item['fname'], thread['fname']]),
+          targetPostId: floor ? null : post,
+          targetReplyId: floor ? post : null,
+          postId: floor && number(item['quote_pid']) > 0
+              ? '${item['quote_pid']}'
+              : null,
         ),
       ),
     );
+  }
+
+  /// The footer came into view: fetch the next page, no button needed.
+  void _reachedEnd() {
+    if (!_more || _busy || _error != null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
   @override
@@ -237,40 +193,268 @@ class _MessagesListState extends State<_MessagesList>
           final visible = _items
               .where((item) => !LocalStore.instance.userBlocked(_user(item)))
               .toList();
-          return ListView.builder(
-            padding: const EdgeInsets.all(12),
+          final rows = widget.kind == MessageKind.likes
+              ? groupLikes(visible)
+              : [
+                  for (final item in visible) [item],
+                ];
+          return ListView.separated(
+            padding: const EdgeInsets.symmetric(vertical: 4),
             physics: const AlwaysScrollableScrollPhysics(),
-            itemCount: visible.length + 1,
+            itemCount: rows.length + 1,
+            separatorBuilder: (context, index) => Divider(
+              height: 1,
+              indent: 68,
+              endIndent: 16,
+              color: Theme.of(context).colorScheme.outlineVariant
+                  .withValues(alpha: .5),
+            ),
             itemBuilder: (context, index) {
-              if (index < visible.length) return _card(visible[index]);
-              return Column(
-                children: [
-                  if (_error != null) ...[
-                    Text(_error!, textAlign: TextAlign.center),
-                    TextButton(
-                      onPressed: () => _load(reset: _retryReset),
-                      child: const Text('重试'),
-                    ),
-                  ],
-                  if (_busy)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: CircularProgressIndicator(),
-                      ),
-                    )
-                  else if (_more && _error == null)
-                    TextButton(onPressed: _load, child: const Text('加载更多'))
-                  else if (_items.isEmpty && _error == null)
-                    const Padding(
-                      padding: EdgeInsets.all(40),
-                      child: Center(child: Text('暂无通知')),
-                    ),
-                ],
+              if (index < rows.length) {
+                return _NoticeRow(
+                  kind: widget.kind,
+                  items: rows[index],
+                  user: _user,
+                  onTap: () => _open(rows[index].first),
+                );
+              }
+              _reachedEnd();
+              return Padding(
+                padding: const EdgeInsets.all(24),
+                child: Center(
+                  child: _error != null
+                      ? Column(
+                          children: [
+                            Text(_error!, textAlign: TextAlign.center),
+                            TextButton(
+                              onPressed: () => _load(reset: _retryReset),
+                              child: const Text('重试'),
+                            ),
+                          ],
+                        )
+                      : _busy || _more
+                      ? const CircularProgressIndicator()
+                      : Text(
+                          _items.isEmpty ? '暂无消息' : '没有更多了',
+                          style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                          ),
+                        ),
+                ),
               );
             },
           );
         },
+      ),
+    );
+  }
+}
+
+/// Likes on the same post become one row, newest first; the first item of
+/// each group is the latest like.
+List<List<Json>> groupLikes(List<Json> items) {
+  final groups = <String, List<Json>>{};
+  var unique = 0;
+  for (final item in items) {
+    final post = object(item['post_info']);
+    final postId = firstText([item['post_id'], post['post_id'], post['id']]);
+    final threadId = firstText([
+      item['thread_id'],
+      object(item['thread_info'])['id'],
+    ]);
+    final key = postId.isEmpty || postId == '0'
+        ? (threadId.isEmpty ? 'item:${unique++}' : 'thread:$threadId')
+        : 'post:$postId';
+    (groups[key] ??= []).add(item);
+  }
+  return groups.values.toList();
+}
+
+class _NoticeRow extends StatelessWidget {
+  const _NoticeRow({
+    required this.kind,
+    required this.items,
+    required this.user,
+    required this.onTap,
+  });
+  final MessageKind kind;
+  final List<Json> items;
+  final Json Function(Json item) user;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final item = items.first;
+    final thread = {
+      ...object(item['thread_info']),
+      ...object(item['thread_content']),
+    };
+    final title = firstText([
+      item['title'],
+      thread['title'],
+    ], '查看帖子').replaceFirst(RegExp(r'^(?:(?:回复帖子|回复)\s*[:：]\s*)+'), '');
+    final forum = firstText([item['fname'], thread['fname']]);
+    final unavailable =
+        flag(item['is_del']) ||
+        firstText([item['thread_id'], thread['id']]).isEmpty;
+    final likes = kind == MessageKind.likes;
+    // What they wrote (replies, mentions), or what of mine they liked.
+    final said = likes ? null : contentParts(item['content']);
+    final mine = likes
+        ? contentParts(object(item['post_info'])['content'])
+        : contentParts(item['quote_content']);
+    final people = <String, Json>{
+      for (final i in items) userKey(user(i), i): user(i),
+    }.values.toList();
+    final names = people.take(2).map(author).join('、');
+    final who = people.length > 2 ? '$names 等 ${people.length} 人' : names;
+    final action = switch (kind) {
+      MessageKind.replies => flag(item['is_floor']) ? '回复了你的评论' : '回复了你',
+      MessageKind.likes => '赞了你',
+      MessageKind.mentions => '提到了你',
+    };
+    final muted = text.bodySmall?.copyWith(color: colors.onSurfaceVariant);
+    return InkWell(
+      onTap: unavailable ? null : onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _Avatars(people: people),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: who,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              TextSpan(
+                                text: '  $action',
+                                style: TextStyle(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: text.bodyMedium,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        commentTime(item['time'] ?? item['op_time']),
+                        style: muted,
+                      ),
+                    ],
+                  ),
+                  if (said != null && said.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    InlinePostContent(
+                      parts: said,
+                      maxLines: 4,
+                      style: text.bodyLarge?.copyWith(height: 1.45),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (mine.isNotEmpty)
+                          InlinePostContent(
+                            prefix: likes ? '' : '我：',
+                            prefixColor: colors.primary,
+                            parts: mine,
+                            maxLines: 2,
+                            style: text.bodySmall?.copyWith(
+                              color: colors.onSurface,
+                              height: 1.45,
+                            ),
+                          ),
+                        if (mine.isNotEmpty) const SizedBox(height: 4),
+                        Text(
+                          [
+                            if (unavailable) '原内容已不可用',
+                            if (forum.isNotEmpty) '$forum吧',
+                            title,
+                          ].join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: muted,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One avatar, or up to three overlapping ones for a group of likes.
+class _Avatars extends StatelessWidget {
+  const _Avatars({required this.people});
+  final List<Json> people;
+
+  @override
+  Widget build(BuildContext context) {
+    if (people.length <= 1) {
+      return GestureDetector(
+        onTap: people.isEmpty ? null : () => openUser(context, people.first),
+        child: UserAvatar(user: people.isEmpty ? const {} : people.first),
+      );
+    }
+    final shown = people.take(3).toList();
+    final surface = Theme.of(context).colorScheme.surface;
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: Stack(
+        children: [
+          for (var i = 0; i < shown.length; i++)
+            Positioned(
+              left: i * 10.0,
+              top: i * 10.0 / 2,
+              child: Container(
+                padding: const EdgeInsets.all(1.5),
+                decoration: BoxDecoration(
+                  color: surface,
+                  shape: BoxShape.circle,
+                ),
+                child: UserAvatar(user: shown[i], size: 24),
+              ),
+            ),
+        ],
       ),
     );
   }

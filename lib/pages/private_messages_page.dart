@@ -1,5 +1,3 @@
-import '../data/platform_session.dart';
-
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -10,7 +8,6 @@ import '../data/models.dart';
 import '../data/private_messages.dart';
 import '../widgets/post_widgets.dart';
 import '../widgets/voice_player.dart';
-import '../widgets/app_snack_bar.dart';
 import 'image_page.dart';
 import 'login_page.dart';
 import 'private_messages_web_page.dart';
@@ -153,9 +150,14 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                   if (AuthStore.instance.isLoggedIn)
                     TextButton(onPressed: _login, child: const Text('重新登录后再试')),
                 ] else if (_more)
-                  TextButton(
-                    onPressed: () => _load(),
-                    child: const Text('加载更多'),
+                  // The footer is in view: fetch the next page.
+                  Builder(
+                    builder: (context) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted && _more && !_busy) _load();
+                      });
+                      return const Center(child: CircularProgressIndicator());
+                    },
                   )
                 else
                   Text(_items.isEmpty ? '暂无私信' : '已显示全部联系人'),
@@ -457,35 +459,6 @@ class _PrivateChatPageState extends State<_PrivateChatPage> {
                     );
                   },
                 ),
-        ),
-        SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _invalid
-                    ? null
-                    : () async {
-                        try {
-                          await const PlatformSession().invokeMethod(
-                            'openOfficialTieba',
-                          );
-                        } catch (_) {
-                          if (context.mounted)
-                            ScaffoldMessenger.of(context).showAppSnackBar(
-                              const AppSnackBar(
-                                content: Text('暂不支持在本应用发送私信，请使用官方贴吧客户端'),
-                              ),
-                            );
-                        }
-                      },
-                icon: const Icon(Icons.open_in_new),
-                label: const Text('发送消息请打开官方贴吧'),
-              ),
-            ),
-          ),
         ),
       ],
     ),
