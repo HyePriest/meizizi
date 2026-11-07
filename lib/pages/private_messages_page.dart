@@ -14,6 +14,7 @@ import '../widgets/app_snack_bar.dart';
 import 'image_page.dart';
 import 'login_page.dart';
 import 'private_messages_web_page.dart';
+import '../widgets/desktop_layout.dart';
 
 class PrivateMessagesPage extends StatefulWidget {
   const PrivateMessagesPage({super.key});
@@ -97,7 +98,14 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => DesktopFrame(
+    child: DesktopRefreshShortcut(
+      onRefresh: () => _load(reset: true),
+      child: _buildPage(context),
+    ),
+  );
+
+  Widget _buildPage(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: const Text('私信'),
       actions: [
@@ -326,7 +334,10 @@ class _PrivateChatPageState extends State<_PrivateChatPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) =>
+      DesktopFrame(child: _buildPage(context));
+
+  Widget _buildPage(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: Text(
         firstText([

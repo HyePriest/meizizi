@@ -5,6 +5,7 @@ import '../widgets/forum_widgets.dart';
 import '../widgets/post_widgets.dart';
 import 'reading_page.dart';
 import 'user_page.dart';
+import '../widgets/desktop_layout.dart';
 
 enum UserConnections { follows, fans, forums }
 
@@ -75,7 +76,14 @@ class _UserConnectionsPageState extends State<UserConnectionsPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => DesktopFrame(
+    child: DesktopRefreshShortcut(
+      onRefresh: () => _load(reset: true),
+      child: _buildPage(context),
+    ),
+  );
+
+  Widget _buildPage(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: Text(switch (widget.kind) {
         UserConnections.follows => '关注的人',

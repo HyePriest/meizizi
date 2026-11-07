@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../data/local_store.dart';
 import '../data/theme_colors.dart';
 import '../widgets/feed_icons.dart';
+import '../widgets/desktop_layout.dart';
 
 class ThemeColorPage extends StatefulWidget {
   const ThemeColorPage({
@@ -178,7 +179,10 @@ class _ThemeColorPageState extends State<ThemeColorPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      DesktopFrame(child: _buildPage(context));
+
+  Widget _buildPage(BuildContext context) {
     if (!widget.background) {
       final store = LocalStore.instance;
       final background = Color(

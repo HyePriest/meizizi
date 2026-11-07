@@ -15,6 +15,7 @@ import 'messages_page.dart';
 import 'private_messages_page.dart';
 import 'update_page.dart';
 import 'theme_color_page.dart';
+import '../widgets/desktop_layout.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -484,7 +485,10 @@ class BlockedPage extends StatelessWidget {
   const BlockedPage({super.key, required this.forums});
   final bool forums;
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) =>
+      DesktopFrame(child: _buildPage(context));
+
+  Widget _buildPage(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text(forums ? '屏蔽的吧' : '拉黑的人')),
     body: ListenableBuilder(
       listenable: LocalStore.instance,

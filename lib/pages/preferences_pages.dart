@@ -5,11 +5,15 @@ import 'package:flutter/material.dart';
 import '../data/local_store.dart';
 import '../data/models.dart';
 import 'reading_page.dart';
+import '../widgets/desktop_layout.dart';
 
 class HistoryPage extends StatelessWidget {
   const HistoryPage({super.key});
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) =>
+      DesktopFrame(child: _buildPage(context));
+
+  Widget _buildPage(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: const Text('浏览历史'),
       actions: [
@@ -127,7 +131,10 @@ class _KeywordPageState extends State<KeywordPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) =>
+      DesktopFrame(child: _buildPage(context));
+
+  Widget _buildPage(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('按吧名关键词屏蔽')),
     body: ListenableBuilder(
       listenable: LocalStore.instance,

@@ -26,10 +26,14 @@ class ForumFeedPager extends StatefulWidget {
     required this.onSelected,
     required this.levelNames,
     required this.decorateUser,
+    this.refreshSignal,
   });
 
   final TiebaApi api;
   final ReadingController primaryReader;
+
+  /// Each change reloads the visible category (desktop refresh button, F5).
+  final Listenable? refreshSignal;
   final Future<void> Function(bool reset) loadPrimary;
   final ScrollController outerController;
   final Widget header, categoryBar;
@@ -114,6 +118,7 @@ class _ForumFeedPagerState extends State<ForumFeedPager> {
             active: index == widget.selected,
             levelNames: widget.levelNames,
             decorateUser: widget.decorateUser,
+            refreshSignal: widget.refreshSignal,
           );
         },
       ),
@@ -132,6 +137,7 @@ class _ForumFeed extends StatefulWidget {
     required this.loadPrimary,
     required this.levelNames,
     required this.decorateUser,
+    this.refreshSignal,
   });
   final TiebaApi api;
   final ReadingQuery query;
@@ -141,6 +147,7 @@ class _ForumFeed extends StatefulWidget {
   final Future<void> Function(bool reset) loadPrimary;
   final Map<int, String> levelNames;
   final Json Function(Json user) decorateUser;
+  final Listenable? refreshSignal;
 
   @override
   State<_ForumFeed> createState() => _ForumFeedState();
@@ -166,7 +173,18 @@ class _ForumFeedState extends State<_ForumFeed>
           ),
         );
     _reader.addListener(_changed);
+    widget.refreshSignal?.addListener(_refreshRequested);
     if (widget.primaryReader == null) _load(true);
+  }
+
+  /// Same as pulling down to refresh.
+  Future<void> _refresh() async {
+    if (widget.primaryReader == null) await widget.loadPrimary(true);
+    if (mounted) await _load(true);
+  }
+
+  void _refreshRequested() {
+    if (widget.active) _refresh();
   }
 
   void _changed() {
@@ -250,6 +268,10 @@ class _ForumFeedState extends State<_ForumFeed>
   @override
   void didUpdateWidget(covariant _ForumFeed oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshSignal != widget.refreshSignal) {
+      oldWidget.refreshSignal?.removeListener(_refreshRequested);
+      widget.refreshSignal?.addListener(_refreshRequested);
+    }
     // A tab that was swiped to may already be scrolled near its end.
     if (widget.active && !oldWidget.active) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -261,6 +283,7 @@ class _ForumFeedState extends State<_ForumFeed>
   @override
   void dispose() {
     _reader.removeListener(_changed);
+    widget.refreshSignal?.removeListener(_refreshRequested);
     if (widget.primaryReader == null) _reader.dispose();
     super.dispose();
   }
@@ -333,10 +356,7 @@ class _ForumFeedState extends State<_ForumFeed>
     return Material(
       color: Theme.of(context).colorScheme.surface,
       child: RefreshIndicator(
-        onRefresh: () async {
-          if (widget.primaryReader == null) await widget.loadPrimary(true);
-          if (mounted) await _load(true);
-        },
+        onRefresh: _refresh,
         child: NotificationListener<Notification>(
           onNotification: _onScroll,
           child: CustomScrollView(

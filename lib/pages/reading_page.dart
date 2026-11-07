@@ -16,6 +16,7 @@ import '../widgets/bow_share_button.dart';
 import '../widgets/building_content.dart';
 import '../widgets/comment_card.dart';
 import '../widgets/current_ip_label.dart';
+import '../widgets/desktop_layout.dart';
 import '../widgets/feed_icons.dart';
 import '../widgets/forum_feed_pager.dart';
 import '../widgets/forum_header_card.dart';
@@ -169,6 +170,7 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
   bool? _savedOverride;
   List<Json> _moderators = [];
   final _viewport = ReadingViewport();
+  final _forumRefresh = ValueNotifier<int>(0);
   Map<String, GlobalKey> get _rowKeys => _viewport.rows;
   final _shatterKeys = <String, GlobalKey>{};
   final _blocking = <String>{};
@@ -928,6 +930,7 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
     _viewport.removeListener(_readingChanged);
     _viewport.cancel();
     _viewport.dispose();
+    _forumRefresh.dispose();
     _reader.removeListener(_readingChanged);
     _reader.dispose();
     _api.close();
@@ -1319,6 +1322,25 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
     );
   }
 
+  /// Desktop refresh button and F5: the same as pulling down to refresh.
+  void _refresh() {
+    if (_isForum) {
+      _forumRefresh.value++;
+    } else if (!_busy) {
+      _load(reset: true);
+    }
+  }
+
+  /// On desktop, keeps [child] inside the reading column.
+  Widget _readingColumn(Widget child) => isDesktop && !_isForum
+      ? Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: desktopColumnWidth),
+            child: child,
+          ),
+        )
+      : child;
+
   @override
   Widget build(BuildContext context) {
     final visibleItems = _items.where((item) => !_blocked(item)).toList();
@@ -1328,56 +1350,59 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) _rememberPosition();
       },
-      child: Scaffold(
-        bottomNavigationBar: _bottomBar(toolbar, replyBar),
-        body: _forumBackground(
-          _readingLayout(
-            header: ValueListenableBuilder<double>(
-              valueListenable: _toolbarOffset,
-              child: _building ? replyBar : toolbar,
-              builder: (_, offset, child) => ScrollAwayHeader(
-                offset: !_isForum && !_building ? offset : 0,
-                height: _building ? 36 : (_isForum ? 56 : 48),
-                child: child!,
+      child: DesktopRefreshShortcut(
+        onRefresh: _refresh,
+        child: Scaffold(
+          bottomNavigationBar: _bottomBar(toolbar, replyBar),
+          body: _forumBackground(
+            _readingLayout(
+              header: ValueListenableBuilder<double>(
+                valueListenable: _toolbarOffset,
+                child: _readingColumn(_building ? replyBar : toolbar),
+                builder: (_, offset, child) => ScrollAwayHeader(
+                  offset: !_isForum && !_building ? offset : 0,
+                  height: _building ? 36 : (_isForum ? 56 : 48),
+                  child: child!,
+                ),
               ),
-            ),
-            child: NotificationListener<ScrollNotification>(
-              onNotification: _trackToolbar,
-              child: RefreshIndicator(
-                // In the reversed building list, pulling down at the paging
-                // edge must not reset the floors that have already loaded.
-                notificationPredicate: (notification) =>
-                    !_isForum &&
-                    !_building &&
-                    defaultScrollNotificationPredicate(notification),
-                onRefresh: () => _load(reset: true),
-                child: Opacity(
-                  opacity: _viewport.hidden && !(_isFloor && _initialLoading)
-                      ? 0
-                      : 1,
-                  child: _readingList(
-                    key: _listKey,
-                    controller: _scroll,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(
-                      _isForum ? 12 : 16,
-                      !_isForum && !_building ? 48 : 8,
-                      _isForum ? 12 : 16,
-                      16,
+              child: NotificationListener<ScrollNotification>(
+                onNotification: _trackToolbar,
+                child: RefreshIndicator(
+                  // In the reversed building list, pulling down at the paging
+                  // edge must not reset the floors that have already loaded.
+                  notificationPredicate: (notification) =>
+                      !_isForum &&
+                      !_building &&
+                      defaultScrollNotificationPredicate(notification),
+                  onRefresh: () => _load(reset: true),
+                  child: Opacity(
+                    opacity: _viewport.hidden && !(_isFloor && _initialLoading)
+                        ? 0
+                        : 1,
+                    child: _readingList(
+                      key: _listKey,
+                      controller: _scroll,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: EdgeInsets.fromLTRB(
+                        _isForum ? 12 : 16,
+                        !_isForum && !_building ? 48 : 8,
+                        _isForum ? 12 : 16,
+                        16,
+                      ),
+                      rowIds: visibleItems.map((p) => '${p['id']}').toList(),
+                      itemCount: visibleItems.length + 2,
+                      itemBuilder: (context, index) {
+                        if (index == 0) {
+                          if (_isForum) return _forumListHeader(context);
+                          if (_isFloor) return _floorListHeader(context);
+                          return _threadListHeader(context, visibleItems);
+                        }
+                        if (index == visibleItems.length + 1) {
+                          return _footer(context);
+                        }
+                        return _listRow(context, visibleItems[index - 1]);
+                      },
                     ),
-                    rowIds: visibleItems.map((p) => '${p['id']}').toList(),
-                    itemCount: visibleItems.length + 2,
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        if (_isForum) return _forumListHeader(context);
-                        if (_isFloor) return _floorListHeader(context);
-                        return _threadListHeader(context, visibleItems);
-                      }
-                      if (index == visibleItems.length + 1) {
-                        return _footer(context);
-                      }
-                      return _listRow(context, visibleItems[index - 1]);
-                    },
                   ),
                 ),
               ),
@@ -1458,6 +1483,16 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
               },
             ),
       actions: [
+        if (isDesktop)
+          IconButton(
+            onPressed: _refresh,
+            icon: Icon(
+              Icons.refresh,
+              color: _isForum ? Colors.white : null,
+              size: _isForum ? 26 : null,
+            ),
+            tooltip: '刷新（F5）',
+          ),
         if (!_isForum && !_isFloor)
           SizedBox(
             width: 52,
@@ -1541,7 +1576,7 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
                 textStyle: const TextStyle(fontSize: 13),
               )
             : FilledButton.styleFrom(
-                minimumSize: const Size(0, 40),
+                minimumSize: Size(isDesktop ? 280 : 0, 40),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 8,
@@ -1585,7 +1620,14 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
               ),
             ),
           )
-        : SafeArea(top: false, child: replyBar);
+        : SafeArea(
+            top: false,
+            // On desktop the button sits under the text column at its own
+            // size instead of spanning the whole window.
+            child: isDesktop
+                ? Center(heightFactor: 1, child: replyBar)
+                : replyBar,
+          );
   }
 
   /// First list row of a forum: identity card, follow/sign and pinned threads.
@@ -2005,6 +2047,7 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
         primaryReader: _reader,
         loadPrimary: (reset) => _load(reset: reset),
         outerController: controller,
+        refreshSignal: _forumRefresh,
         header: Padding(
           padding: EdgeInsets.fromLTRB(
             padding.left,

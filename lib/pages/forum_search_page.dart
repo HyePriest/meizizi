@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../data/tieba_api.dart';
 import '../widgets/forum_thread_card.dart';
+import '../widgets/desktop_layout.dart';
 
 class ForumSearchPage extends StatefulWidget {
   const ForumSearchPage({
@@ -195,7 +196,12 @@ class _ForumSearchPageState extends State<ForumSearchPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => DesktopRefreshShortcut(
+    onRefresh: () => _load(reset: true),
+    child: _buildPage(context),
+  );
+
+  Widget _buildPage(BuildContext context) => Scaffold(
     appBar: AppBar(
       titleSpacing: 0,
       title: TextField(

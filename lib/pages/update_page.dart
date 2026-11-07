@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 
 import '../data/app_update.dart';
+import '../widgets/desktop_layout.dart';
 
 class UpdatePage extends StatefulWidget {
   const UpdatePage({super.key});
@@ -18,7 +19,10 @@ class _UpdatePageState extends State<UpdatePage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) =>
+      DesktopFrame(child: _buildPage(context));
+
+  Widget _buildPage(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('版本更新')),
     body: ListenableBuilder(
       listenable: AppUpdate.instance,
