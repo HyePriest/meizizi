@@ -26,6 +26,21 @@ open class MainActivity : FlutterActivity() {
     private var pendingBytes: ByteArray? = null
     private var pendingPick: MethodChannel.Result? = null
     private var updateRunning = false
+    @Volatile private var updateCancelled = false
+    @Volatile private var updateConnection: java.net.HttpURLConnection? = null
+    /** Download progress for the update page: stage, received and total bytes. */
+    private var updateChannel: MethodChannel? = null
+    private var lastProgressAt = 0L
+
+    private fun reportUpdate(stage: String, received: Long = 0, total: Long = -1, force: Boolean = true) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (!force && now - lastProgressAt < 200) return
+        lastProgressAt = now
+        runOnUiThread {
+            updateChannel?.invokeMethod("progress", mapOf(
+                "stage" to stage, "received" to received, "total" to total))
+        }
+    }
 
     private fun pickReplyImages(result: MethodChannel.Result) {
         if (pendingPick != null) { result.error("BUSY", "相册已经打开", null); return }
@@ -157,6 +172,7 @@ open class MainActivity : FlutterActivity() {
         }
         if (updateRunning) { result.error("BUSY", "正在下载更新", null); return }
         updateRunning = true
+        updateCancelled = false
         Thread {
             val directory = java.io.File(cacheDir, "updates").apply { mkdirs() }
             val file = java.io.File(directory, "tieba-update.apk")
@@ -169,7 +185,10 @@ open class MainActivity : FlutterActivity() {
                             "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")) {
                         throw java.io.IOException("更新地址跳转异常")
                     }
+                    if (updateCancelled) throw java.util.concurrent.CancellationException()
+                    reportUpdate("connecting")
                     val connection = target.openConnection() as java.net.HttpURLConnection
+                    updateConnection = connection
                     connection.instanceFollowRedirects = false
                     connection.connectTimeout = 15000
                     connection.readTimeout = 30000
@@ -184,25 +203,30 @@ open class MainActivity : FlutterActivity() {
                         }
                         if (code != 200) throw java.io.IOException("下载失败")
                         var size = 0L
+                        val expected = connection.contentLengthLong
+                        reportUpdate("downloading", 0, expected)
                         connection.inputStream.use { input ->
                             partial.outputStream().use { output ->
                                 val buffer = ByteArray(32768)
                                 while (true) {
+                                    if (updateCancelled) throw java.util.concurrent.CancellationException()
                                     val count = input.read(buffer)
                                     if (count < 0) break
                                     size += count
                                     if (size > 100L * 1024 * 1024) throw java.io.IOException("安装包过大")
                                     output.write(buffer, 0, count)
+                                    reportUpdate("downloading", size, expected, force = false)
                                 }
                             }
                         }
-                        val expected = connection.contentLengthLong
+                        reportUpdate("downloading", size, expected)
                         if (size == 0L || (expected > 0 && expected != size)) throw java.io.IOException("下载未完成")
                         downloaded = true
                         break
-                    } finally { connection.disconnect() }
+                    } finally { updateConnection = null; connection.disconnect() }
                 }
                 if (!downloaded) throw java.io.IOException("下载跳转过多")
+                reportUpdate("verifying")
                 val info = packageManager.getPackageArchiveInfo(partial.absolutePath, 0)
                     ?: throw java.io.IOException("安装包无效")
                 val installed = packageManager.getPackageInfo(packageName, 0)
@@ -216,11 +240,19 @@ open class MainActivity : FlutterActivity() {
                     // Download completion never opens a window over the reader.
                     result.success("ready")
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
                 partial.delete()
+                // Cancelling closes the connection, so a blocked read ends in an IOException.
+                val cancelled = updateCancelled
+                val timedOut = error is java.net.SocketTimeoutException ||
+                    error is java.net.UnknownHostException || error is java.net.ConnectException
                 runOnUiThread {
                     updateRunning = false
-                    result.error("DOWNLOAD_FAILED", "更新下载未完成，请重试", null)
+                    when {
+                        cancelled -> result.error("CANCELLED", "已取消下载", null)
+                        timedOut -> result.error("NETWORK", "连接 GitHub 失败，请检查网络或改用浏览器下载", null)
+                        else -> result.error("DOWNLOAD_FAILED", "更新下载未完成，请重试", null)
+                    }
                 }
             }
         }.start()
@@ -314,6 +346,7 @@ open class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         voice = VoicePlayback(this)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.jknl.tieba/voice").setMethodCallHandler(voice)
+        updateChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.jknl.tieba/update")
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.jknl.tieba/session")
             .setMethodCallHandler { call, result ->
                 val manager = CookieManager.getInstance()
@@ -349,6 +382,11 @@ open class MainActivity : FlutterActivity() {
                     }
                     "downloadUpdate" -> downloadUpdate(call.argument<String>("url") ?: "", result)
                     "installUpdate" -> installUpdate(result)
+                    "cancelUpdate" -> {
+                        updateCancelled = true
+                        updateConnection?.let { connection -> Thread { connection.disconnect() }.start() }
+                        result.success(null)
+                    }
                     "shareImage" -> shareImage(call.argument<ByteArray>("bytes"),
                         call.argument<String>("title") ?: "贴吧", result)
                     "shareText" -> {

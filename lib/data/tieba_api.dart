@@ -1183,6 +1183,23 @@ class TiebaApi {
     'pn': '1',
     'page': '1',
   });
+
+  /// Fills in the logged-in account's nickname and avatar from its public
+  /// profile. The login session often has an empty `name` and no `name_show`,
+  /// which made 我的 show the 吧友 placeholder.
+  Future<void> refreshOwnProfile() async {
+    final account = _auth.activeId;
+    if (!_auth.isLoggedIn || account.isEmpty) return;
+    final result = await userProfile(_auth.user);
+    final profile = object(result.data['user']);
+    if (_auth.activeId != account) return;
+    final patch = {
+      for (final key in ['name_show', 'name', 'portrait', 'intro'])
+        if (firstText([profile[key]]).isNotEmpty) key: profile[key],
+    };
+    if (patch.isNotEmpty) await _auth.updateProfile(account, patch);
+  }
+
   Future<TiebaPage> userPosts(
     String uid,
     int page, {
@@ -1333,7 +1350,12 @@ class TiebaApi {
     final session = await _session(bduss);
     final profile = object(session['user']);
     await _auth.save(cookies, profile);
-    return profile;
+    try {
+      await refreshOwnProfile();
+    } catch (_) {
+      // The nickname is filled in again from 我的; login itself succeeded.
+    }
+    return _auth.user;
   }
 
   Future<String> uploadReplyImage({

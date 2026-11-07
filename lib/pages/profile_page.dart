@@ -17,6 +17,56 @@ import 'update_page.dart';
 import 'theme_color_page.dart';
 import '../widgets/desktop_layout.dart';
 
+/// The account row at the top of 我的. It fills in the nickname from the
+/// public profile once per account and app run.
+class _AccountCard extends StatefulWidget {
+  const _AccountCard({super.key, required this.onLogin});
+  final VoidCallback onLogin;
+  @override
+  State<_AccountCard> createState() => _AccountCardState();
+}
+
+class _AccountCardState extends State<_AccountCard> {
+  static final _refreshed = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    final auth = AuthStore.instance;
+    if (auth.isLoggedIn && _refreshed.add(auth.activeId)) {
+      final api = TiebaApi();
+      api
+          .refreshOwnProfile()
+          .catchError((_) {
+            // Try again next time 我的 opens.
+            _refreshed.remove(auth.activeId);
+          })
+          .whenComplete(api.close);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = AuthStore.instance;
+    return Card(
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading: UserAvatar(user: auth.user, size: 52),
+        title: Text(auth.isLoggedIn ? author(auth.user) : '游客模式'),
+        subtitle: Text(auth.isLoggedIn ? '查看个人主页、关注和吧龄' : '点击登录，使用点赞、回复和收藏'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          if (auth.isLoggedIn) {
+            openUser(context, auth.user);
+          } else {
+            widget.onLogin();
+          }
+        },
+      ),
+    );
+  }
+}
+
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
   @override
@@ -38,24 +88,7 @@ class ProfilePage extends StatelessWidget {
       return ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Card(
-            child: ListTile(
-              contentPadding: const EdgeInsets.all(16),
-              leading: UserAvatar(user: auth.user, size: 52),
-              title: Text(auth.isLoggedIn ? author(auth.user) : '游客模式'),
-              subtitle: Text(
-                auth.isLoggedIn ? '查看个人主页、关注和吧龄' : '点击登录，使用点赞、回复和收藏',
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                if (auth.isLoggedIn) {
-                  openUser(context, auth.user);
-                } else {
-                  login();
-                }
-              },
-            ),
-          ),
+          _AccountCard(key: ValueKey(auth.activeId), onLogin: login),
           Card(
             child: Row(
               children: [

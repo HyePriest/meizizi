@@ -1,6 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -10,9 +10,93 @@ import 'package:http/http.dart' as http;
 import 'auth_store.dart';
 import 'models.dart';
 
+/// Where a running update download is.
+enum UpdateStage { connecting, downloading, verifying }
+
 class AppUpdate extends ChangeNotifier {
-  AppUpdate._();
+  AppUpdate._() {
+    _progressChannel.setMethodCallHandler(_onProgress);
+  }
   static final instance = AppUpdate._();
+  static const _progressChannel = MethodChannel('com.jknl.tieba/update');
+
+  /// The clock for progress timing; tests replace it.
+  @visibleForTesting
+  static DateTime Function() clock = DateTime.now;
+
+  /// Progress of the running download; [total] is -1 until the server says.
+  UpdateStage stage = UpdateStage.connecting;
+  int received = 0, total = -1;
+  DateTime? _stageStarted, _lastBytesAt;
+  final _speedSamples = <(DateTime, int)>[];
+
+  /// The download has made no progress for a while: likely GitHub is slow or
+  /// unreachable from this network, so the page suggests the browser instead.
+  bool get stalled {
+    if (!downloading) return false;
+    final since = stage == UpdateStage.downloading
+        ? _lastBytesAt
+        : _stageStarted;
+    return since != null &&
+        clock().difference(since) > const Duration(seconds: 8);
+  }
+
+  /// Bytes per second over the last few seconds.
+  double get speed {
+    if (_speedSamples.length < 2) return 0;
+    final first = _speedSamples.first, last = _speedSamples.last;
+    final seconds =
+        last.$1.difference(first.$1).inMilliseconds /
+        Duration.millisecondsPerSecond;
+    return seconds <= 0 ? 0 : (last.$2 - first.$2) / seconds;
+  }
+
+  double? get fraction =>
+      total > 0 ? (received / total).clamp(0.0, 1.0).toDouble() : null;
+
+  Future<void> _onProgress(MethodCall call) async {
+    if (call.method != 'progress' || !downloading) return;
+    final args = object(call.arguments);
+    final next = switch ('${args['stage']}') {
+      'downloading' => UpdateStage.downloading,
+      'verifying' => UpdateStage.verifying,
+      _ => UpdateStage.connecting,
+    };
+    final now = clock();
+    if (next != stage) {
+      stage = next;
+      _stageStarted = now;
+      _speedSamples.clear();
+    }
+    final bytes = number(args['received']);
+    if (bytes > received || next != UpdateStage.downloading) _lastBytesAt = now;
+    received = bytes;
+    total = number(args['total']) > 0 ? number(args['total']) : -1;
+    if (next == UpdateStage.downloading) {
+      _speedSamples
+        ..add((now, received))
+        ..removeWhere((s) => now.difference(s.$1) > const Duration(seconds: 3));
+    }
+    notifyListeners();
+  }
+
+  void _resetProgress() {
+    stage = UpdateStage.connecting;
+    received = 0;
+    total = -1;
+    _stageStarted = _lastBytesAt = clock();
+    _speedSamples.clear();
+  }
+
+  Future<void> cancel() async {
+    if (!downloading) return;
+    try {
+      await AuthStore.native.invokeMethod<void>('cancelUpdate');
+    } on PlatformException {
+      // The download ends on its own; nothing else to undo.
+    }
+  }
+
   static String version = '';
   static const projectUrl = 'https://github.com/HyePriest/meizizi';
   static const releasesUrl = '$projectUrl/releases/latest';
@@ -117,6 +201,24 @@ class AppUpdate extends ChangeNotifier {
     throw const FormatException();
   }
 
+  /// Tests and previews: accept a release without the network.
+  @visibleForTesting
+  void debugSetRelease(String tag, String url, {String notes = ''}) {
+    _acceptRelease(tag, url, notes);
+    notifyListeners();
+  }
+
+  /// Tests and previews: show a download in progress.
+  @visibleForTesting
+  void debugSetProgress(UpdateStage stage, int received, int total) {
+    downloading = true;
+    this.stage = stage;
+    this.received = received;
+    this.total = total;
+    _stageStarted = _lastBytesAt = clock();
+    notifyListeners();
+  }
+
   Future<void> openLink(String url) async {
     try {
       await AuthStore.native.invokeMethod<void>('openUpdateLink', {'url': url});
@@ -216,11 +318,12 @@ class AppUpdate extends ChangeNotifier {
 
   Future<void> install() async {
     if (!available || downloading) return;
-    downloading = true;
+    final installing = readyToInstall;
+    downloading = !installing;
     error = null;
+    _resetProgress();
     notifyListeners();
     try {
-      final installing = readyToInstall;
       final result = await AuthStore.native.invokeMethod<String>(
         installing ? 'installUpdate' : 'downloadUpdate',
         installing ? null : {'url': _download},
@@ -229,7 +332,8 @@ class AppUpdate extends ChangeNotifier {
       if (result == 'permission') error = '允许此应用安装更新后，点击继续更新';
     } on PlatformException catch (e) {
       if (e.code == 'MISSING_UPDATE') readyToInstall = false;
-      error = e.message ?? '更新下载或安装未完成，请重试';
+      // Cancelling is the user's own choice, not an error to show.
+      error = e.code == 'CANCELLED' ? null : e.message ?? '更新下载或安装未完成，请重试';
     } catch (_) {
       error = '更新下载或安装未完成，可重试或使用浏览器下载';
     } finally {

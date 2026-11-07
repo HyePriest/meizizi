@@ -127,6 +127,21 @@ class AuthStore extends ChangeNotifier {
         notifyListeners();
       });
 
+  /// Merges public profile fields (such as the `name_show` nickname, which the
+  /// login session leaves out for accounts without a username) into a saved
+  /// account. Cookies are untouched.
+  Future<void> updateProfile(String id, Json profile) => _change(() async {
+    final index = _accounts.indexWhere((a) => a['id'] == id);
+    if (index < 0) return;
+    final account = _accounts[index];
+    final merged = {...object(account['user']), ...profile};
+    if (jsonEncode(merged) == jsonEncode(object(account['user']))) return;
+    final updated = [..._accounts]..[index] = {...account, 'user': merged};
+    await _persist(updated, _active);
+    _accounts = updated;
+    notifyListeners();
+  });
+
   Future<void> switchAccount(String id) => _change(() async {
     if (id == _active) return;
     final account = _accounts.firstWhere(
