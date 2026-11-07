@@ -12,7 +12,6 @@ import 'preferences_pages.dart';
 import 'user_page.dart';
 import 'my_content_page.dart';
 import 'messages_page.dart';
-import 'private_messages_page.dart';
 import 'update_page.dart';
 import 'theme_color_page.dart';
 import '../widgets/desktop_layout.dart';
@@ -136,22 +135,6 @@ class ProfilePage extends StatelessWidget {
           ),
           const MessageEntry(),
           ListTile(
-            leading: const Icon(Icons.mail_outline),
-            title: const Text('私信'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () async {
-              if (!auth.isLoggedIn) {
-                await openLoginPage(context);
-              }
-              if (!context.mounted || !auth.isLoggedIn) return;
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const PrivateMessagesPage(),
-                ),
-              );
-            },
-          ),
-          ListTile(
             leading: const Icon(Icons.history),
             title: const Text('浏览历史'),
             trailing: const Icon(Icons.chevron_right),
@@ -208,6 +191,8 @@ class _MessageEntryState extends State<MessageEntry>
     with WidgetsBindingObserver {
   final _api = TiebaApi();
   int _count = 0, _revision = 0;
+  // Unread counts by 消息 tab: 1 回复我的, 2 收到的赞, 3 @我的.
+  Map<int, int> _counts = const {};
   @override
   void initState() {
     super.initState();
@@ -228,19 +213,26 @@ class _MessageEntryState extends State<MessageEntry>
   Future<void> _refresh() async {
     final revision = ++_revision;
     final account = AuthStore.instance.activeId;
-    if (mounted) setState(() => _count = 0);
+    if (mounted) {
+      setState(() {
+        _count = 0;
+        _counts = const {};
+      });
+    }
     if (!AuthStore.instance.isLoggedIn) return;
     try {
       final counts = await _api.messageCounts();
       if (mounted &&
           revision == _revision &&
           account == AuthStore.instance.activeId) {
-        setState(
-          () => _count =
-              number(counts['replyme']) +
-              number(counts['atme']) +
-              number(counts['agreeme'] ?? counts['agree']),
-        );
+        setState(() {
+          _counts = {
+            1: number(counts['replyme']),
+            2: number(counts['agreeme'] ?? counts['agree']),
+            3: number(counts['atme']),
+          };
+          _count = _counts.values.fold(0, (a, b) => a + b);
+        });
       }
     } catch (_) {}
   }
@@ -258,18 +250,26 @@ class _MessageEntryState extends State<MessageEntry>
     leading: Badge.count(
       count: _count,
       isLabelVisible: _count > 0,
-      child: const Icon(Icons.notifications_outlined),
+      child: const Icon(Icons.forum_outlined),
     ),
-    title: const Text('通知'),
-    subtitle: const Text('回复我的 · 收到的赞 · @我的'),
+    title: const Text('消息'),
+    subtitle: const Text('私信 · 回复我的 · 收到的赞 · @我的'),
     trailing: const Icon(Icons.chevron_right),
     onTap: () async {
       if (!AuthStore.instance.isLoggedIn) {
         await openLoginPage(context);
       }
       if (!context.mounted || !AuthStore.instance.isLoggedIn) return;
-      await Navigator.of(context)
-          .push(MaterialPageRoute<void>(builder: (_) => const MessagesPage()));
+      // Open on the first tab with something new, else on 私信.
+      final first = _counts.entries
+          .where((e) => e.value > 0)
+          .map((e) => e.key)
+          .fold<int?>(null, (a, b) => a == null || b < a ? b : a);
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => MessagesPage(initialTab: first ?? 0, counts: _counts),
+        ),
+      );
       if (mounted) _refresh();
     },
   );

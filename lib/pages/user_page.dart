@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import '../data/tieba_api.dart';
 import '../widgets/app_snack_bar.dart';
 import '../widgets/post_widgets.dart';
-import '../widgets/reliable_image.dart';
 import '../widgets/thread_thumbnails.dart';
 import 'reading_page.dart';
 import 'user_connections_page.dart';
@@ -38,6 +37,9 @@ class _Feed {
 
 class _UserPageState extends State<UserPage> {
   late final _api = widget.api ?? TiebaApi();
+  // The app bar shows the name once the header's name has scrolled away.
+  final _scroll = ScrollController();
+  final _titleVisible = ValueNotifier(false);
   Json _user = {};
   bool _profileLoaded = false;
   String? _profileError;
@@ -61,11 +63,16 @@ class _UserPageState extends State<UserPage> {
   void initState() {
     super.initState();
     _user = widget.user;
+    _scroll.addListener(
+      () => _titleVisible.value = _scroll.hasClients && _scroll.offset > 72,
+    );
     _refresh();
   }
 
   @override
   void dispose() {
+    _scroll.dispose();
+    _titleVisible.dispose();
     _api.close();
     super.dispose();
   }
@@ -166,9 +173,21 @@ class _UserPageState extends State<UserPage> {
         onRefresh: _refresh,
         edgeOffset: MediaQuery.paddingOf(context).top + kToolbarHeight,
         child: CustomScrollView(
+          controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            _UserBanner(user: _user),
+            SliverAppBar(
+              pinned: true,
+              surfaceTintColor: Colors.transparent,
+              title: ValueListenableBuilder<bool>(
+                valueListenable: _titleVisible,
+                builder: (_, visible, _) => AnimatedOpacity(
+                  opacity: visible ? 1 : 0,
+                  duration: const Duration(milliseconds: 150),
+                  child: Text(author(_user)),
+                ),
+              ),
+            ),
             SliverToBoxAdapter(
               child: _UserHeader(
                 user: _user,
@@ -256,106 +275,6 @@ String _count(int value) {
   return '$value';
 }
 
-/// The cover image across the top; the page title appears once it scrolls away.
-class _UserBanner extends StatelessWidget {
-  const _UserBanner({required this.user});
-  final Json user;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final cover = httpsImage(user['bg_pic']);
-    final top = MediaQuery.paddingOf(context).top;
-    const expanded = 150.0;
-    return SliverAppBar(
-      pinned: true,
-      expandedHeight: expanded,
-      backgroundColor: colors.surface,
-      surfaceTintColor: Colors.transparent,
-      flexibleSpace: LayoutBuilder(
-        builder: (context, constraints) {
-          final collapse =
-              ((expanded + top - constraints.maxHeight) /
-                      (expanded - kToolbarHeight))
-                  .clamp(0.0, 1.0);
-          final fallback = DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  colors.primary.withValues(alpha: .55),
-                  colors.primaryContainer,
-                ],
-              ),
-            ),
-          );
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              Opacity(
-                opacity: 1 - collapse,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    cover.isEmpty
-                        ? fallback
-                        : ReliableImage(
-                            urls: [cover],
-                            fit: BoxFit.cover,
-                            fallback: fallback,
-                          ),
-                    // Keeps the back button and status bar readable on any cover.
-                    const DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Color(0x66000000), Color(0x00000000)],
-                          stops: [0, .6],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Positioned(
-                left: 56,
-                right: 16,
-                top: top,
-                height: kToolbarHeight,
-                child: Opacity(
-                  opacity: collapse,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      author(user),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-      leading: Builder(
-        builder: (context) => IconButton(
-          tooltip: '返回',
-          style: IconButton.styleFrom(
-            backgroundColor: Colors.black.withValues(alpha: .18),
-            foregroundColor: Colors.white,
-          ),
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-      ),
-    );
-  }
-}
-
 class _UserHeader extends StatelessWidget {
   const _UserHeader({
     required this.user,
@@ -391,77 +310,75 @@ class _UserHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // The avatar rises into the cover; only its lower part takes space.
-          SizedBox(
-            height: 52,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Positioned(
-                  left: 0,
-                  bottom: 6,
-                  child: Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      color: colors.surface,
-                      shape: BoxShape.circle,
-                    ),
-                    child: UserAvatar(user: user, size: 80),
-                  ),
-                ),
-              ],
-            ),
-          ),
           Padding(
-            padding: const EdgeInsets.only(top: 4),
+            padding: const EdgeInsets.only(top: 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Flexible(
-                      child: Text(
-                        author(user),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: text.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                    UserAvatar(user: user, size: 72),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  author(user),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: text.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              if (sex == 1 || sex == 2) ...[
+                                const SizedBox(width: 6),
+                                Icon(
+                                  sex == 1
+                                      ? Icons.male_rounded
+                                      : Icons.female_rounded,
+                                  size: 20,
+                                  color: sex == 1
+                                      ? const Color(0xff4a8af4)
+                                      : const Color(0xffef6c9c),
+                                ),
+                              ],
+                            ],
+                          ),
+                          if (tiebaId.isNotEmpty)
+                            InkWell(
+                              borderRadius: BorderRadius.circular(6),
+                              onTap: () async {
+                                await Clipboard.setData(
+                                  ClipboardData(text: tiebaId),
+                                );
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showAppSnackBar(
+                                  const AppSnackBar(content: Text('贴吧 ID 已复制')),
+                                );
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 4,
+                                ),
+                                child: Text(
+                                  '贴吧 ID：$tiebaId',
+                                  style: text.bodySmall?.copyWith(
+                                    color: colors.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    if (sex == 1 || sex == 2) ...[
-                      const SizedBox(width: 6),
-                      Icon(
-                        sex == 1 ? Icons.male_rounded : Icons.female_rounded,
-                        size: 20,
-                        color: sex == 1
-                            ? const Color(0xff4a8af4)
-                            : const Color(0xffef6c9c),
-                      ),
-                    ],
                   ],
                 ),
-                if (tiebaId.isNotEmpty)
-                  InkWell(
-                    borderRadius: BorderRadius.circular(6),
-                    onTap: () async {
-                      await Clipboard.setData(ClipboardData(text: tiebaId));
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showAppSnackBar(
-                        const AppSnackBar(content: Text('贴吧 ID 已复制')),
-                      );
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Text(
-                        '贴吧 ID：$tiebaId',
-                        style: text.bodySmall?.copyWith(
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 14),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,

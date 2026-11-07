@@ -6,6 +6,7 @@ import 'package:http/testing.dart';
 import 'package:tieba/data/app_update.dart';
 import 'package:tieba/data/platform_session.dart';
 import 'package:tieba/data/tieba_api.dart';
+import 'package:tieba/pages/messages_page.dart';
 import 'package:tieba/pages/update_page.dart';
 import 'package:tieba/pages/user_page.dart';
 
@@ -167,5 +168,18 @@ void main() {
     expect(find.textContaining('原来的帖子'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(minutes: 1));
+  });
+
+  testWidgets('消息 puts 私信 beside replies, likes and mentions', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: MessagesPage(counts: {2: 5})),
+    );
+    await tester.pump();
+    for (final tab in ['私信', '回复我的', '收到的赞', '@我的']) {
+      expect(find.text(tab), findsOneWidget);
+    }
+    expect(find.text('5'), findsOneWidget);
+    // Logged out here, so the 私信 tab asks to log in.
+    expect(find.text('登录后查看私信'), findsOneWidget);
   });
 }

@@ -4,30 +4,54 @@ import '../data/auth_store.dart';
 import '../data/local_store.dart';
 import '../data/tieba_api.dart';
 import '../widgets/post_widgets.dart';
+import 'private_messages_page.dart';
 import 'reading_page.dart';
 import '../widgets/desktop_layout.dart';
 
+/// 消息: private messages, and the replies, likes and mentions others sent.
 class MessagesPage extends StatelessWidget {
-  const MessagesPage({super.key});
+  const MessagesPage({super.key, this.initialTab = 0, this.counts = const {}});
+
+  /// 0 私信, 1 回复我的, 2 收到的赞, 3 @我的.
+  final int initialTab;
+
+  /// Unread counts by tab index, shown as badges.
+  final Map<int, int> counts;
+
   @override
   Widget build(BuildContext context) =>
       DesktopFrame(child: _buildPage(context));
 
+  Widget _tab(String label, int index) {
+    final count = counts[index] ?? 0;
+    return Tab(
+      child: Badge.count(
+        count: count,
+        isLabelVisible: count > 0,
+        offset: const Offset(14, -6),
+        child: Text(label),
+      ),
+    );
+  }
+
   Widget _buildPage(BuildContext context) => DefaultTabController(
-    length: 3,
+    length: 4,
+    initialIndex: initialTab,
     child: Scaffold(
       appBar: AppBar(
-        title: const Text('通知'),
-        bottom: const TabBar(
+        title: const Text('消息'),
+        bottom: TabBar(
           tabs: [
-            Tab(text: '回复我的'),
-            Tab(text: '收到的赞'),
-            Tab(text: '@我的'),
+            _tab('私信', 0),
+            _tab('回复我的', 1),
+            _tab('收到的赞', 2),
+            _tab('@我的', 3),
           ],
         ),
       ),
       body: const TabBarView(
         children: [
+          PrivateMessagesPage(embedded: true),
           _MessagesList(kind: MessageKind.replies),
           _MessagesList(kind: MessageKind.likes),
           _MessagesList(kind: MessageKind.mentions),

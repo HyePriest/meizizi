@@ -17,7 +17,10 @@ import 'private_messages_web_page.dart';
 import '../widgets/desktop_layout.dart';
 
 class PrivateMessagesPage extends StatefulWidget {
-  const PrivateMessagesPage({super.key});
+  const PrivateMessagesPage({super.key, this.embedded = false});
+
+  /// Inside the 消息 page's tab: the contact list only, without its own bar.
+  final bool embedded;
   @override
   State<PrivateMessagesPage> createState() => _PrivateMessagesPageState();
 }
@@ -98,12 +101,14 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   }
 
   @override
-  Widget build(BuildContext context) => DesktopFrame(
-    child: DesktopRefreshShortcut(
-      onRefresh: () => _load(reset: true),
-      child: _buildPage(context),
-    ),
-  );
+  Widget build(BuildContext context) => widget.embedded
+      ? _contacts(context)
+      : DesktopFrame(
+          child: DesktopRefreshShortcut(
+            onRefresh: () => _load(reset: true),
+            child: _buildPage(context),
+          ),
+        );
 
   Widget _buildPage(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -121,60 +126,64 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
         ),
       ],
     ),
-    body: RefreshIndicator(
-      onRefresh: () => _load(reset: true),
-      child: ListView.builder(
-        physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: _items.length + 1,
-        itemBuilder: (context, index) {
-          if (index == _items.length)
-            return Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  if (_busy)
-                    const Center(child: CircularProgressIndicator())
-                  else if (_error != null) ...[
-                    Text(_error!, textAlign: TextAlign.center),
-                    TextButton(
-                      onPressed: AuthStore.instance.isLoggedIn
-                          ? () => _load(reset: _retryReset)
-                          : _login,
-                      child: Text(AuthStore.instance.isLoggedIn ? '重试' : '登录'),
-                    ),
-                  ] else if (_more)
-                    TextButton(
-                      onPressed: () => _load(),
-                      child: const Text('加载更多'),
-                    )
-                  else
-                    Text(_items.isEmpty ? '暂无私信' : '已显示全部联系人'),
-                ],
-              ),
-            );
-          final item = _items[index];
-          final name = firstText([
-            item['show_nickname'],
-            item['uname'],
-            item['name_show'],
-            item['nickname'],
-          ], '吧友');
-          final unread = number(item['unread']);
-          return ListTile(
-            leading: UserAvatar(user: {'portrait': item['portrait']}, size: 44),
-            title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(unread > 0 ? '$unread 条未读消息' : '查看聊天记录'),
-            trailing: unread > 0
-                ? Badge(label: Text(unread > 99 ? '99+' : '$unread'))
-                : const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => _PrivateChatPage(contact: item),
-              ),
+    body: _contacts(context),
+  );
+
+  Widget _contacts(BuildContext context) => RefreshIndicator(
+    onRefresh: () => _load(reset: true),
+    child: ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
+      itemCount: _items.length + 1,
+      itemBuilder: (context, index) {
+        if (index == _items.length)
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                if (_busy)
+                  const Center(child: CircularProgressIndicator())
+                else if (_error != null) ...[
+                  Text(_error!, textAlign: TextAlign.center),
+                  TextButton(
+                    onPressed: AuthStore.instance.isLoggedIn
+                        ? () => _load(reset: _retryReset)
+                        : _login,
+                    child: Text(AuthStore.instance.isLoggedIn ? '重试' : '登录'),
+                  ),
+                  if (AuthStore.instance.isLoggedIn)
+                    TextButton(onPressed: _login, child: const Text('重新登录后再试')),
+                ] else if (_more)
+                  TextButton(
+                    onPressed: () => _load(),
+                    child: const Text('加载更多'),
+                  )
+                else
+                  Text(_items.isEmpty ? '暂无私信' : '已显示全部联系人'),
+              ],
             ),
           );
-        },
-      ),
+        final item = _items[index];
+        final name = firstText([
+          item['show_nickname'],
+          item['uname'],
+          item['name_show'],
+          item['nickname'],
+        ], '吧友');
+        final unread = number(item['unread']);
+        return ListTile(
+          leading: UserAvatar(user: {'portrait': item['portrait']}, size: 44),
+          title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(unread > 0 ? '$unread 条未读消息' : '查看聊天记录'),
+          trailing: unread > 0
+              ? Badge(label: Text(unread > 99 ? '99+' : '$unread'))
+              : const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => _PrivateChatPage(contact: item),
+            ),
+          ),
+        );
+      },
     ),
   );
 }
