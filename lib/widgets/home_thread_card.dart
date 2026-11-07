@@ -39,9 +39,24 @@ class HomeThreadCard extends StatelessWidget {
         thread['forum_avatar'],
       ]),
     };
-    final summary = objects(thread['abstract'])
-        .map((p) => p['text'] ?? '')
-        .join();
+    final comment = feedComment(thread);
+    // A recommended comment shows what was said, under the thread it is in;
+    // its own title is only "回复：<thread title>".
+    final summary =
+        objects(
+              comment == null
+                  ? thread['abstract']
+                  : thread['first_post_content'] ?? thread['abstract'],
+            )
+            // Text, links and @mentions; images show as thumbnails below.
+            .where(
+              (p) =>
+                  comment == null ||
+                  const {0, 1, 4}.contains(number(p['type'])),
+            )
+            .map((p) => p['text'] ?? '')
+            .join()
+            .trim();
     return FeedListItem(
       separatorGap: 2,
       child: InkWell(
@@ -118,20 +133,30 @@ class HomeThreadCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        firstText([thread['title']], '查看帖子'),
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      if (summary.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            summary,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
+                      if (comment == null) ...[
+                        Text(
+                          firstText([thread['title']], '查看帖子'),
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        if (summary.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              summary,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
+                      ] else if (summary.isNotEmpty)
+                        Text(
+                          summary,
+                          maxLines: 4,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyLarge,
                         ),
                       ThreadThumbnails(thread: thread),
+                      if (comment != null)
+                        _OriginalThread(title: comment.threadTitle),
                     ],
                   ),
                 ),
@@ -145,6 +170,41 @@ class HomeThreadCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The thread a recommended comment was posted in.
+class _OriginalThread extends StatelessWidget {
+  const _OriginalThread({required this.title});
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '原帖  ',
+              style: TextStyle(color: colors.primary),
+            ),
+            TextSpan(text: title.isEmpty ? '查看帖子' : title),
+          ],
+        ),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.bodyMedium
+            ?.copyWith(color: colors.onSurfaceVariant),
       ),
     );
   }

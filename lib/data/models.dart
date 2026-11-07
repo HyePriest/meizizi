@@ -65,6 +65,26 @@ String threadForumName(Json thread) => firstText([
   object(thread['forum'])['forum_name'],
 ]);
 
+/// A home feed card that recommends one comment rather than a thread
+/// (`thread_type` 81). Its `id` is a feed-only number that no thread page
+/// knows; the real thread is `origin_thread_info.tid` and the comment's floor
+/// is `post_id`. Returns null for ordinary threads.
+({String threadId, String postId, String threadTitle})? feedComment(Json item) {
+  final origin = object(item['origin_thread_info']);
+  final threadId = firstText([origin['tid'], origin['thread_id']]);
+  final postId = firstText([item['post_id'], item['pid']]);
+  if (threadId.isEmpty || threadId == '0' || postId.isEmpty || postId == '0') {
+    return null;
+  }
+  return (
+    threadId: threadId,
+    postId: postId,
+    threadTitle: firstText([
+      origin['title'],
+    ], firstText([item['title']]).replaceFirst(RegExp(r'^回复[:：]'), '')),
+  );
+}
+
 String userKey(Json user, [Json thread = const {}]) {
   final id = firstText([user['id'], user['user_id'], thread['author_id']]);
   if (id.isNotEmpty && id != '0') return 'id:$id';

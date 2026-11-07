@@ -21,12 +21,20 @@ class ThreadThumbnails extends StatelessWidget {
               ? null
               : () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => ReadingPage(
-                      previewThread: thread,
-                      threadId: firstText([thread['id'], thread['tid']]),
-                      title: firstText([thread['title']]),
-                      forum: threadForumName(thread),
-                    ),
+                    builder: (_) => switch (feedComment(thread)) {
+                      final comment? => ReadingPage(
+                        threadId: comment.threadId,
+                        title: comment.threadTitle,
+                        forum: threadForumName(thread),
+                        targetPostId: comment.postId,
+                      ),
+                      null => ReadingPage(
+                        previewThread: thread,
+                        threadId: firstText([thread['id'], thread['tid']]),
+                        title: firstText([thread['title']]),
+                        forum: threadForumName(thread),
+                      ),
+                    },
                   ),
                 ),
         ),

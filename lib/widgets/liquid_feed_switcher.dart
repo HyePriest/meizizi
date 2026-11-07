@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import 'directional_page_drag.dart';
 import 'section_tabs.dart';
 
 /// Horizontal gestures compete normally with the feed's vertical scrolling.
@@ -86,11 +87,24 @@ class _LiquidFeedSwitcherState extends State<LiquidFeedSwitcher>
     }
   }
 
+  /// The pages' IgnorePointer reads [_dragging], but they otherwise rebuild
+  /// only when the page offset moves. A drag released where it started never
+  /// moves it again, so without this rebuild the feed would keep ignoring
+  /// every tap and scroll until the next swipe.
+  void _setDragging(bool value) {
+    if (_dragging == value) return;
+    if (mounted) {
+      setState(() => _dragging = value);
+    } else {
+      _dragging = value;
+    }
+  }
+
   void _start(DragStartDetails details) {
     widget.onSwitching?.call(true);
     _run++;
     _position.stop();
-    _dragging = true;
+    _setDragging(true);
     _beginWater();
     for (final target in [widget.selected - 1, widget.selected + 1]) {
       if (target >= 0 && target < widget.children.length) {
@@ -127,7 +141,7 @@ class _LiquidFeedSwitcherState extends State<LiquidFeedSwitcher>
   }
 
   Future<void> _settle(int target, double velocity) async {
-    _dragging = false;
+    _setDragging(false);
     final run = ++_run;
     final remaining = (target - _position.value).abs();
     final milliseconds = (180 + remaining * 160 - velocity.abs() * 18)
@@ -206,15 +220,30 @@ class _LiquidFeedSwitcherState extends State<LiquidFeedSwitcher>
         child: LayoutBuilder(
           builder: (context, constraints) {
             _width = constraints.maxWidth;
-            return GestureDetector(
+            return RawGestureDetector(
               behavior: HitTestBehavior.translucent,
-              onHorizontalDragStart: _start,
-              onHorizontalDragUpdate: _update,
-              onHorizontalDragEnd: _end,
-              onHorizontalDragCancel: () {
-                // A child long press or vertical scroll can win before a
-                // horizontal drag starts. There is then nothing to settle.
-                if (_dragging) _settle(widget.selected, 0);
+              gestures: {
+                // Only mostly-sideways swipes switch feeds; a slightly slanted
+                // downward scroll stays with the list instead of freezing it.
+                DirectionalHorizontalDragRecognizer:
+                    GestureRecognizerFactoryWithHandlers<
+                      DirectionalHorizontalDragRecognizer
+                    >(
+                      () =>
+                          DirectionalHorizontalDragRecognizer(debugOwner: this),
+                      (recognizer) {
+                        recognizer
+                          ..onStart = _start
+                          ..onUpdate = _update
+                          ..onEnd = _end
+                          ..onCancel = () {
+                            // A child long press or vertical scroll can win
+                            // before a horizontal drag starts. There is then
+                            // nothing to settle.
+                            if (_dragging) _settle(widget.selected, 0);
+                          };
+                      },
+                    ),
               },
               child: ClipRect(
                 child: Stack(

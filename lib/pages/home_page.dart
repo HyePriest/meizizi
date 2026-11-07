@@ -177,14 +177,32 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  void _openPost(Json item) => _navigateFromHome(
-    ReadingPage(
-      previewThread: {...item, 'author': _user(item)},
-      threadId: '${item['id']}',
-      title: '${item['title'] ?? ''}',
-      forum: threadForumName(item).isEmpty ? null : threadForumName(item),
-    ),
-  );
+  void _openPost(Json item) {
+    final forum = threadForumName(item).isEmpty ? null : threadForumName(item);
+    final comment = feedComment(item);
+    if (comment != null) {
+      // A recommended comment: open its thread at that floor. The card's own
+      // id is not a thread, and the comment is not that thread's first floor.
+      _navigateFromHome(
+        ReadingPage(
+          threadId: comment.threadId,
+          title: comment.threadTitle,
+          forum: forum,
+          targetPostId: comment.postId,
+        ),
+      );
+      return;
+    }
+    _navigateFromHome(
+      ReadingPage(
+        previewThread: {...item, 'author': _user(item)},
+        threadId: '${item['id']}',
+        title: '${item['title'] ?? ''}',
+        forum: forum,
+      ),
+    );
+  }
+
   void _searchFor(String raw) {
     final word = raw.trim();
     if (word.isEmpty) return;
@@ -233,16 +251,29 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _sharePost(Json item) async {
+    final comment = feedComment(item);
+    final author = {..._user(item), ...object(item['author'])};
     try {
-      await ShareContent.post(
-        threadId: '${item['id']}',
-        title: firstText([item['title']]),
-        forum: threadForumName(item),
-        post: {
-          ...item,
-          'author': {..._user(item), ...object(item['author'])},
-        },
-      ).share();
+      await (comment == null
+              ? ShareContent.post(
+                  threadId: '${item['id']}',
+                  title: firstText([item['title']]),
+                  forum: threadForumName(item),
+                  post: {...item, 'author': author},
+                )
+              : ShareContent.post(
+                  threadId: comment.threadId,
+                  postId: comment.postId,
+                  title: comment.threadTitle,
+                  forum: threadForumName(item),
+                  comment: {
+                    ...item,
+                    'id': comment.postId,
+                    'content': item['first_post_content'] ?? item['abstract'],
+                    'author': author,
+                  },
+                ))
+          .share();
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)

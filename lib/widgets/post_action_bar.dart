@@ -70,6 +70,36 @@ class _DetailActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = ThreadFeedActionStyle.color(context);
+    final reply = TextButton(
+      onPressed: onReply,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconTheme(
+            data: IconThemeData(color: color),
+            child: FeedIcon(
+              building ? FeedGlyph.brick : FeedGlyph.comment,
+              size: 20,
+            ),
+          ),
+          if (replyCount != null) ...[
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                '$replyCount',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+    final share = SizedBox(
+      width: 48,
+      height: 48,
+      child: BowShareButton(onShare: onShare, size: 22, color: color),
+    );
     return TextButtonTheme(
       data: TextButtonThemeData(
         style: TextButton.styleFrom(
@@ -80,56 +110,47 @@ class _DetailActions extends StatelessWidget {
           textStyle: Theme.of(context).textTheme.labelMedium,
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Flexible(
-            child: TextButton(
-              onPressed: onReply,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconTheme(
-                    data: IconThemeData(color: color),
-                    child: FeedIcon(
-                      building ? FeedGlyph.brick : FeedGlyph.comment,
-                      size: 20,
-                    ),
+      child: replyCount != null
+          // The first floor spreads its actions over the row. Equal halves on
+          // both sides keep 转发 centered whatever the two counts are.
+          ? Row(
+              children: [
+                Expanded(
+                  child: Align(alignment: Alignment.centerLeft, child: reply),
+                ),
+                share,
+                Expanded(
+                  child: Align(alignment: Alignment.centerRight, child: like),
+                ),
+              ],
+            )
+          // Every comment, 楼中楼 included, uses the same fixed slots, so
+          // their actions line up whatever the floor number or counts are;
+          // 楼中楼 just leave the floor slot empty.
+          : Row(
+              children: [
+                Expanded(
+                  child: Align(alignment: Alignment.centerLeft, child: reply),
+                ),
+                Expanded(
+                  child: Align(alignment: Alignment.centerLeft, child: share),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Align(alignment: Alignment.centerLeft, child: like),
+                ),
+                Expanded(
+                  child: Text(
+                    floor,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: Theme.of(context).textTheme.labelMedium
+                        ?.copyWith(color: color),
                   ),
-                  if (replyCount != null) ...[
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        '$replyCount',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+                ),
+              ],
             ),
-          ),
-          SizedBox(
-            width: 48,
-            height: 48,
-            child: BowShareButton(onShare: onShare, size: 22, color: color),
-          ),
-          Flexible(child: like),
-          if (floor.isNotEmpty) const Spacer(),
-          if (floor.isNotEmpty)
-            Flexible(
-              child: Text(
-                floor,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.right,
-                style: Theme.of(context).textTheme.labelMedium
-                    ?.copyWith(color: color),
-              ),
-            ),
-        ],
-      ),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
 
@@ -15,6 +16,11 @@ import 'widgets/desktop_layout.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (Platform.isAndroid) {
+    // Draw behind the status and navigation bars on every Android version,
+    // not only where Android 15 enforces it; pages pad with SafeArea.
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+  }
   if (Platform.isWindows) {
     MediaKit.ensureInitialized();
     try {
@@ -82,8 +88,12 @@ class _TiebaAppState extends State<TiebaApp> {
   @override
   Widget build(BuildContext context) => MaterialApp(
     navigatorKey: _navigator,
-    builder: (context, child) =>
-        DesktopNavigationInput(navigatorKey: _navigator, child: child!),
+    // Pages without an AppBar (home, reading) otherwise keep whatever
+    // status bar style the previous page left behind.
+    builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+      value: immersiveOverlayStyle(Theme.of(context).scaffoldBackgroundColor),
+      child: DesktopNavigationInput(navigatorKey: _navigator, child: child!),
+    ),
     themeMode: _appearance.followSystem ? ThemeMode.system : ThemeMode.light,
     themeAnimationDuration: Duration.zero,
     title: '美滋滋',

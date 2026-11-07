@@ -1,7 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 Color _readable(Color background) =>
     background.computeLuminance() > .179 ? Colors.black : Colors.white;
+
+/// Transparent system bars whose icons stay readable on [background], so the
+/// status bar blends into the page instead of showing a grey scrim or icons
+/// left behind by the previous page.
+SystemUiOverlayStyle immersiveOverlayStyle(Color background) {
+  final light = background.computeLuminance() > .179;
+  return SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: light ? Brightness.dark : Brightness.light,
+    statusBarBrightness: light ? Brightness.light : Brightness.dark,
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarDividerColor: Colors.transparent,
+    systemNavigationBarIconBrightness: light
+        ? Brightness.dark
+        : Brightness.light,
+  );
+}
 
 Color? _cachedSeed;
 Brightness? _cachedBrightness;
@@ -113,6 +131,7 @@ ThemeData appTheme(
       foregroundColor: _readable(surface),
       actionsIconTheme: IconThemeData(color: accent),
       surfaceTintColor: Colors.transparent,
+      systemOverlayStyle: immersiveOverlayStyle(surface),
     ),
     listTileTheme: ListTileThemeData(
       iconColor: accent,

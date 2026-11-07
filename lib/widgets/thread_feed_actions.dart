@@ -94,7 +94,9 @@ class ThreadFeedActions extends StatelessWidget {
                 key: ValueKey(
                   'feed-like-${AuthStore.instance.activeId}-${thread['id']}',
                 ),
-                threadId: '${thread['id']}',
+                // A recommended comment is liked as that floor of its thread.
+                threadId: feedComment(thread)?.threadId ?? '${thread['id']}',
+                postId: feedComment(thread)?.postId ?? '0',
                 data: thread,
                 onChanged: onLikeChanged,
                 feedStyle: true,
