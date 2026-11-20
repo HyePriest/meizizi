@@ -11,6 +11,7 @@ import 'data/app_webview.dart';
 import 'data/auth_store.dart';
 import 'data/local_store.dart';
 import 'data/theme_colors.dart';
+import 'features/home/home_controller.dart';
 import 'pages/home_page.dart';
 import 'widgets/desktop_layout.dart';
 
@@ -33,6 +34,18 @@ Future<void> main() async {
     AuthStore.instance.restore(),
     LocalStore.instance.restore(),
   ]);
+  final hasCache = LocalStore.instance.hasHomeFeedCache(
+    AuthStore.instance.activeId,
+  );
+  if (!hasCache) {
+    // No cached posts yet: start fetching during the native splash so fast
+    // networks land straight on loaded posts instead of a spinner.
+    final preload = HomeController.preloadHome();
+    await preload.timeout(
+      const Duration(milliseconds: 900),
+      onTimeout: () => null,
+    );
+  }
   runApp(const TiebaApp());
   unawaited(AppUpdate.instance.check());
 }

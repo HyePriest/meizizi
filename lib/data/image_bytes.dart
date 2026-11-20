@@ -3,10 +3,10 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 
 /// Encoded bytes are shared across decode sizes. A preview never substitutes
 /// for the requested full-resolution bytes in the exact-URL cache.
@@ -54,16 +54,91 @@ class ImageBytes {
     return null;
   }
 
-  static Future<Directory?> _cacheDirectory() => _directory ??= (() async {
-    try {
-      final path = await const PlatformSession()
-          .invokeMethod<String>('imageCacheDirectory');
-      if (path == null) return null;
-      return await Directory(path).create(recursive: true);
-    } catch (_) {
-      return null;
+  @visibleForTesting
+  static String? cacheDirectoryOverride;
+
+  static Future<Directory?> _cacheDirectory() async {
+    if (cacheDirectoryOverride != null) {
+      return Directory(cacheDirectoryOverride!).create(recursive: true);
     }
-  })();
+    final cached = _directory;
+    if (cached != null) return cached;
+    final pending = (() async {
+      try {
+        final path = await const PlatformSession()
+            .invokeMethod<String>('imageCacheDirectory');
+        if (path == null) return null;
+        return await Directory(path).create(recursive: true);
+      } catch (_) {
+        return null;
+      }
+    })();
+    _directory = pending;
+    final resolved = await pending;
+    if (resolved == null && identical(_directory, pending)) {
+      _directory = null;
+    }
+    return resolved;
+  }
+
+  static void resetCacheDirectory() {
+    _directory = null;
+    cacheDirectoryOverride = null;
+  }
+
+  static Future<List<Directory>> _cacheDirectories() async {
+    final images = await _cacheDirectory();
+    if (images == null) return const [];
+    final dirs = <Directory>[images];
+    final shares = Directory('${images.parent.path}${Platform.pathSeparator}shares');
+    if (await shares.exists()) dirs.add(shares);
+    return dirs;
+  }
+
+  static Future<int> diskCacheBytes() async {
+    try {
+      var total = 0;
+      for (final dir in await _cacheDirectories()) {
+        if (!await dir.exists()) continue;
+        await for (final entry in dir.list(recursive: true, followLinks: false)) {
+          if (entry is! File) continue;
+          try {
+            total += await entry.length();
+          } catch (_) {}
+        }
+      }
+      return total;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static Future<void> clearCache() {
+    _memory.clear();
+    _previews.clear();
+    _size = 0;
+    try {
+      PaintingBinding.instance.imageCache
+        ..clear()
+        ..clearLiveImages();
+    } catch (_) {}
+    final clear = _writes.then((_) async {
+      try {
+        for (final dir in await _cacheDirectories()) {
+          if (!await dir.exists()) continue;
+          await for (final entry in dir.list(followLinks: false)) {
+            try {
+              await entry.delete(recursive: true);
+            } catch (_) {}
+          }
+        }
+        _bytesSinceTrim = 0;
+        _lastTrim = null;
+      } catch (_) {}
+    });
+    _writes = clear;
+    return clear;
+  }
 
   static String _name(String url) =>
       sha256.convert(utf8.encode(url)).toString();

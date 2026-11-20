@@ -58,7 +58,7 @@ object WeeklyLauncherIcons {
     /** Called by the midnight alarm, boot and time changes. */
     fun refresh(context: Context) {
         appContext = context.applicationContext
-        if (startedActivities == 0) applySafely(context)
+        if (startedActivities == 0 && !anotherAppOnTopOfOurTask(context)) applySafely(context)
         // Otherwise onActivityStopped switches the icon when the user leaves.
         scheduleSafely(context)
     }
@@ -111,17 +111,42 @@ object WeeklyLauncherIcons {
                 (current == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && index == 0)
             if (enabled == (index == today)) null else component to desired
         }
-        if (changes.isEmpty()) return
-        if (Build.VERSION.SDK_INT >= 33) {
-            manager.setComponentEnabledSettings(changes.map { (component, state) ->
-                PackageManager.ComponentEnabledSetting(component, state, PackageManager.DONT_KILL_APP)
-            })
-        } else {
-            // Enable the new entry first so there is always a working launcher entry.
-            changes.sortedBy { (_, state) -> if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) 0 else 1 }
-                .forEach { (component, state) ->
-                    manager.setComponentEnabledSetting(component, state, PackageManager.DONT_KILL_APP)
+        if (changes.isNotEmpty()) {
+            if (Build.VERSION.SDK_INT >= 33) {
+                manager.setComponentEnabledSettings(changes.map { (component, state) ->
+                    PackageManager.ComponentEnabledSetting(component, state, PackageManager.DONT_KILL_APP)
+                })
+            } else {
+                // Enable the new entry first so there is always a working launcher entry.
+                changes.sortedBy { (_, state) -> if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) 0 else 1 }
+                    .forEach { (component, state) ->
+                        manager.setComponentEnabledSetting(component, state, PackageManager.DONT_KILL_APP)
+                    }
+            }
+        }
+        // Remove background tasks rooted at a previous day's launcher activity so the
+        // next cold launch from Recents or the home screen uses today's splash theme.
+        removeStaleDayTasks(context, today)
+    }
+
+    private fun removeStaleDayTasks(context: Context, today: Int) {
+        if (Build.VERSION.SDK_INT < 23) return
+        val expectedActivity = "com.jknl.tieba.${days[today]}LauncherActivity"
+        val launcherActivities = days.map { "com.jknl.tieba.${it}LauncherActivity" }.toSet() +
+            "com.jknl.tieba.MainActivity"
+        try {
+            val manager = context.getSystemService(ActivityManager::class.java) ?: return
+            for (task in manager.appTasks) {
+                val info = task.taskInfo
+                val base = info.baseActivity?.className ?: continue
+                val top = info.topActivity
+                if (top != null && top.packageName != context.packageName) continue
+                if (base in launcherActivities && base != expectedActivity) {
+                    task.finishAndRemoveTask()
                 }
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Unable to prune stale day tasks", error)
         }
     }
 

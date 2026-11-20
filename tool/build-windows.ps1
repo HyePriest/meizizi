@@ -1,4 +1,4 @@
-param([switch]$SkipPackage)
+﻿param([switch]$SkipPackage)
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 Push-Location $taskRoot

@@ -66,7 +66,7 @@ class _HomePageState extends State<HomePage>
     _feed.addListener(_feedChanged);
     LocalStore.instance.addListener(_localChanged);
     _scroll.addListener(_loadNearEnd);
-    _load(reset: true);
+    if (_feed.state.page == 0) _load(reset: true);
   }
 
   void _feedChanged() {

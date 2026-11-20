@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 
 import '../data/auth_store.dart';
 import '../data/app_update.dart';
+import '../data/image_bytes.dart';
 import '../data/local_store.dart';
 import '../data/tieba_api.dart';
+import '../features/home/home_controller.dart';
 import '../widgets/post_widgets.dart';
 import 'login_page.dart';
 import 'preferences_pages.dart';
@@ -277,6 +279,71 @@ class _MessageEntryState extends State<MessageEntry>
 
 class _SettingsContentState extends State<SettingsContent> {
   bool _busy = false;
+  bool _clearingCache = false;
+  int? _cacheBytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshCacheSize();
+  }
+
+  Future<void> _refreshCacheSize() async {
+    final disk = await ImageBytes.diskCacheBytes();
+    final total = disk + LocalStore.instance.homeFeedCacheBytes();
+    if (mounted) setState(() => _cacheBytes = total);
+  }
+
+  String _formatCacheSize(int bytes) {
+    if (bytes <= 0) return '暂无缓存';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  Future<void> _clearCache() async {
+    if (_clearingCache) return;
+    final clear = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清理缓存？'),
+        content: const Text('将清除已缓存的图片和首页列表，不影响账号、浏览历史、阅读进度和屏蔽设置。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('清理'),
+          ),
+        ],
+      ),
+    );
+    if (clear != true || !mounted) return;
+    setState(() => _clearingCache = true);
+    try {
+      await Future.wait([
+        ImageBytes.clearCache(),
+        LocalStore.instance.clearHomeFeedCache(),
+      ]);
+      HomeController.clearPreload();
+      await _refreshCacheSize();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showAppSnackBar(const AppSnackBar(content: Text('缓存已清理')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showAppSnackBar(const AppSnackBar(content: Text('清理缓存失败，请重试')));
+      }
+    } finally {
+      if (mounted) setState(() => _clearingCache = false);
+    }
+  }
   Future<void> _action(Future<void> Function() action) async {
     if (_busy) return;
     setState(() => _busy = true);
@@ -507,6 +574,18 @@ class _SettingsContentState extends State<SettingsContent> {
               applicationVersion: AppUpdate.version,
               children: [const Text('Flutter 第三方贴吧客户端。')],
             ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.cleaning_services_outlined),
+            title: const Text('清理缓存'),
+            subtitle: Text(
+              _clearingCache
+                  ? '正在清理…'
+                  : _cacheBytes == null
+                  ? '计算中…'
+                  : _formatCacheSize(_cacheBytes!),
+            ),
+            onTap: _clearingCache ? null : _clearCache,
           ),
         ],
       );

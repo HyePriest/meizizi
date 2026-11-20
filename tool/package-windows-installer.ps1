@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Compiler,
     [string]$RuntimeDirectory
 )

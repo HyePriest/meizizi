@@ -22,6 +22,7 @@ abstract final class _Keys {
   static const threadHistory = 'thread_history';
   static const blockedForums = 'blocked_forums';
   static const blockedUsers = 'blocked_users';
+  static const homeFeedCache = 'home_feed_cache';
 }
 
 const _defaultAccentColor = 0xff246BCE;
@@ -31,6 +32,7 @@ class LocalStore extends ChangeNotifier {
   LocalStore._();
   static final instance = LocalStore._();
   late SharedPreferences _prefs;
+  bool _restored = false;
 
   // Compute each update after the preceding write has committed, so rapid
   // visits, block actions and history clearing cannot overwrite one another.
@@ -64,6 +66,7 @@ class LocalStore extends ChangeNotifier {
   List<String> forumKeywords = [];
   List<Json> history = [];
   Map<String, dynamic> _reading = {};
+  Map<String, Json> _homeFeedCache = {};
   final _readingPages = <String, Json>{};
   Json? readingPage(String account, String tid, {String parent = ''}) {
     final key = '$account:$tid:$parent';
@@ -196,8 +199,81 @@ class LocalStore extends ChangeNotifier {
         await _saveJson(_Keys.signedForums, _signedForums);
       });
 
+  static Map<String, Json> _homeFeedMap(dynamic value) {
+    final result = <String, Json>{};
+    for (final entry in object(value).entries) {
+      final raw = object(entry.value);
+      final items = objects(raw['items']);
+      if (items.isEmpty) continue;
+      final users = <String, Json>{};
+      for (final u in object(raw['users']).entries) {
+        final user = object(u.value);
+        if (user.isNotEmpty) users[u.key] = user;
+      }
+      result[entry.key] = {'items': items, 'users': users};
+    }
+    return result;
+  }
+
+  ({List<Json> items, Map<String, Json> users})? cachedHomeFeed(
+    String accountId,
+  ) {
+    final entry = _homeFeedCache[accountId];
+    if (entry == null) return null;
+    final items = objects(entry['items']);
+    if (items.isEmpty) return null;
+    final users = <String, Json>{};
+    for (final u in object(entry['users']).entries) {
+      final user = object(u.value);
+      if (user.isNotEmpty) users[u.key] = user;
+    }
+    return (items: List.unmodifiable(items), users: Map.unmodifiable(users));
+  }
+
+  bool hasHomeFeedCache(String accountId) => cachedHomeFeed(accountId) != null;
+
+  int homeFeedCacheBytes() {
+    if (_homeFeedCache.isEmpty) return 0;
+    return utf8.encode(jsonEncode(_homeFeedCache)).length;
+  }
+
+  Future<void> saveHomeFeedCache(
+    String accountId,
+    List<Json> items,
+    Map<String, Json> users,
+  ) => _mutate(() async {
+    if (!_restored || items.isEmpty) return;
+    final keptItems = items.take(25).toList();
+    final referencedIds = <String>{};
+    for (final item in keptItems) {
+      final uid = firstText([item['author_id'], object(item['author'])['id']]);
+      if (uid.isNotEmpty) referencedIds.add(uid);
+    }
+    final keptUsers = <String, Json>{};
+    for (final id in referencedIds) {
+      final user = users[id];
+      if (user != null) keptUsers[id] = user;
+    }
+    final updated = Map<String, Json>.of(_homeFeedCache)..remove(accountId);
+    updated[accountId] = {'items': keptItems, 'users': keptUsers};
+    while (updated.length > 3) {
+      updated.remove(updated.keys.first);
+    }
+    await _saveJson(_Keys.homeFeedCache, updated);
+    _homeFeedCache = updated;
+  });
+
+  Future<void> clearHomeFeedCache() => _mutate(() async {
+    clearReadingPages();
+    _homeFeedCache = {};
+    if (_restored) {
+      await _prefs.remove(_Keys.homeFeedCache);
+    }
+  });
+
   Future<void> restore() async {
     _prefs = await SharedPreferences.getInstance();
+    _restored = true;
     // Reply drafts are no longer kept between launches.
     for (final key
         in _prefs
@@ -233,6 +309,12 @@ class LocalStore extends ChangeNotifier {
     forumKeywords = _prefs.getStringList(_Keys.forumKeywords) ?? [];
     _signedForums = _readJson(_Keys.signedForums, '{}', _stringMap, {});
     history = _readJson(_Keys.threadHistory, '[]', objects, <Json>[]);
+    _homeFeedCache = _readJson(
+      _Keys.homeFeedCache,
+      '{}',
+      _homeFeedMap,
+      <String, Json>{},
+    );
     // The two block lists were historically restored together: if either is
     // unreadable, both start empty.
     try {
